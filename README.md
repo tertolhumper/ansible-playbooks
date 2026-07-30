@@ -17,6 +17,7 @@ ansible-playbooks/
 │   └── sshd_config.j2
 ├── reports/
 └── playbooks/
+```
 
 ## Playbooks
 | Playbook | Description | Targets |
