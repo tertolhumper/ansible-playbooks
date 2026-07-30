@@ -1,6 +1,6 @@
 # Ansible Playbooks
 
-Production-ready Ansible playbooks for Linux infrastructure automation targeting Arch Linux and RHEL 10.
+Ansible playbooks for Linux infrastructure automation targeting Arch Linux and RHEL 10.
 
 ## Requirements
 - Ansible 14.x
