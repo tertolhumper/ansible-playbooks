@@ -1,0 +1,29 @@
+---
+- name: User Management
+  hosts: all
+  become: true
+  tasks:
+
+    - name: Create sysadmin user
+      ansible.builtin.user:
+        name: sysadmin
+        state: present
+        shell: /bin/bash
+        create_home: true
+        groups: wheel
+        append: true
+
+    - name: Push SSH public key for sysadmin
+      ansible.posix.authorized_key:
+        user: sysadmin
+        state: present
+        key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+
+    - name: Grant sysadmin sudo with password
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/sysadmin
+        content: 'sysadmin ALL=(ALL) ALL'
+        owner: root
+        group: root
+        mode: '0440'
+        validate: /usr/sbin/visudo -cf %s

@@ -1,0 +1,85 @@
+---
+- name: Application Deployment with Rollback
+  hosts: all
+  become: true
+  vars:
+    app_name: myapp
+    app_version: "1.0.0"
+    releases_dir: /opt/releases
+    current_link: /opt/current
+    keep_releases: 3
+
+  tasks:
+
+    - name: Create releases directory
+      ansible.builtin.file:
+        path: "{{ releases_dir }}/{{ app_version }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Deploy application
+      block:
+        - name: Deploy app files to release dir
+          ansible.builtin.copy:
+            dest: "{{ releases_dir }}/{{ app_version }}/index.html"
+            content: |
+              <html>
+              <body>
+              <h1>{{ app_name }} v{{ app_version }}</h1>
+              <p>Deployed by Ansible on {{ ansible_facts['date_time']['iso8601'] }}</p>
+              <p>Host: {{ inventory_hostname }}</p>
+              </body>
+              </html>
+            owner: root
+            group: root
+            mode: '0644'
+
+        - name: Deploy app config
+          ansible.builtin.copy:
+            dest: "{{ releases_dir }}/{{ app_version }}/app.conf"
+            content: |
+              APP_NAME={{ app_name }}
+              APP_VERSION={{ app_version }}
+              APP_ENV=production
+            owner: root
+            group: root
+            mode: '0640'
+
+        - name: Verify release files exist
+          ansible.builtin.stat:
+            path: "{{ releases_dir }}/{{ app_version }}/index.html"
+          register: app_file
+          failed_when: not app_file.stat.exists
+
+        - name: Switch symlink to new release
+          ansible.builtin.file:
+            src: "{{ releases_dir }}/{{ app_version }}"
+            dest: "{{ current_link }}"
+            state: link
+            force: true
+
+      rescue:
+        - name: Get previous release
+          ansible.builtin.shell: |
+            ls -1t {{ releases_dir }} | grep -v {{ app_version }} | head -1
+          register: previous_release
+          changed_when: false
+
+        - name: Rollback symlink to previous release
+          ansible.builtin.file:
+            src: "{{ releases_dir }}/{{ previous_release.stdout }}"
+            dest: "{{ current_link }}"
+            state: link
+            force: true
+          when: previous_release.stdout != ""
+
+        - name: Notify rollback
+          ansible.builtin.debug:
+            msg: "Deployment failed on {{ inventory_hostname }} — rolled back to {{ previous_release.stdout }}"
+
+    - name: Clean up old releases keep last 3
+      ansible.builtin.shell: |
+        ls -1t {{ releases_dir }} | tail -n +{{ keep_releases + 1 }} | xargs -I {} rm -rf {{ releases_dir }}/{}
+      changed_when: false

@@ -1,0 +1,34 @@
+============================================================
+COMPLIANCE REPORT - rhel_vm
+Generated: 2026-07-30T03:35:13Z
+OS: RedHat 10.2
+Kernel: 6.12.0-211.18.1.el10_2.x86_64
+Uptime: 1 hours
+============================================================
+FAILED SYSTEMD UNITS:
+● dnf-automatic.service loaded failed failed dnf automatic
+● mcelog.service        loaded failed failed Machine Check Exception Logging Daemon
+============================================================
+LISTENING PORTS:
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess                          
+LISTEN 0      128          0.0.0.0:7001      0.0.0.0:*    users:(("sshd",pid=82197,fd=7)) 
+LISTEN 0      4096               *:9090            *:*    users:(("systemd",pid=1,fd=209))
+LISTEN 0      128             [::]:7001         [::]:*    users:(("sshd",pid=82197,fd=8)) 
+============================================================
+SUDOERS FILES:
+/etc/sudoers.d/sysadmin
+============================================================
+LAST LOGINS:
+tertol   pts/1        192.168.100.1    Wed Jul 29 23:35    gone - no logout
+tertol   pts/1        192.168.100.1    Wed Jul 29 23:35 - 23:35  (00:00)
+tertol   pts/1        192.168.100.1    Wed Jul 29 23:35 - 23:35  (00:00)
+tertol   pts/1        192.168.100.1    Wed Jul 29 23:35 - 23:35  (00:00)
+tertol   pts/1        192.168.100.1    Wed Jul 29 23:35 - 23:35  (00:00)
+tertol   pts/1        192.168.100.1    Wed Jul 29 23:35 - 23:35  (00:00)
+tertol   pts/1        192.168.100.1    Wed Jul 29 23:35 - 23:35  (00:00)
+tertol   pts/1        192.168.100.1    Wed Jul 29 23:27 - 23:27  (00:00)
+tertol   pts/1        192.168.100.1    Wed Jul 29 23:27 - 23:27  (00:00)
+tertol   pts/1        192.168.100.1    Wed Jul 29 23:27 - 23:27  (00:00)
+
+wtmp begins Wed May  6 22:35:27 2026
+============================================================

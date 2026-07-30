@@ -1,0 +1,52 @@
+---
+- name: Patch Management with Reboot Handling
+  hosts: all
+  become: true
+  tasks:
+
+    - name: Update all packages (Arch)
+      community.general.pacman:
+        update_cache: true
+        upgrade: true
+      when: ansible_facts['os_family'] == "Archlinux"
+      register: arch_update
+
+    - name: Update all packages (RHEL)
+      ansible.builtin.dnf:
+        name: '*'
+        state: latest
+        update_cache: true
+      when: ansible_facts['os_family'] == "RedHat"
+      register: rhel_update
+
+    - name: Check if reboot is required (Arch)
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required_arch
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Check if kernel was updated (RHEL)
+      ansible.builtin.command: needs-restarting -r
+      register: reboot_required_rhel
+      failed_when: false
+      changed_when: false
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Reboot if required (Arch)
+      ansible.builtin.reboot:
+        msg: "Rebooting after package updates"
+        reboot_timeout: 300
+      when:
+        - ansible_facts['os_family'] == "Archlinux"
+        - reboot_required_arch.stat.exists
+
+    - name: Reboot if required (RHEL)
+      ansible.builtin.reboot:
+        msg: "Rebooting after package updates"
+        reboot_timeout: 300
+      when:
+        - ansible_facts['os_family'] == "RedHat"
+        - reboot_required_rhel.rc == 1
+
+    - name: Verify servers are back online
+      ansible.builtin.ping:

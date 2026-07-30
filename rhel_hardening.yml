@@ -1,0 +1,242 @@
+---
+- name: RHEL 10 Hardening
+  hosts: rhel
+  become: true
+  tasks:
+
+    # SSH Hardening
+    - name: Deploy SSH hardening config
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/99-hardening.conf
+        content: |
+          AllowTcpForwarding no
+          ClientAliveCountMax 2
+          LogLevel VERBOSE
+          MaxAuthTries 3
+          MaxSessions 2
+          TCPKeepAlive no
+          X11Forwarding no
+          AllowAgentForwarding no
+        owner: root
+        group: root
+        mode: '0600'
+      notify: Restart sshd
+
+    # Disable unused protocols
+    - name: Blacklist unused kernel modules
+      ansible.builtin.copy:
+        dest: /etc/modprobe.d/blacklist.conf
+        content: |
+          install dccp /bin/false
+          install sctp /bin/false
+          install rds /bin/false
+          install tipc /bin/false
+          install firewire-core /bin/false
+          install usb-storage /bin/false
+        owner: root
+        group: root
+        mode: '0644'
+
+    # sysctl hardening
+    - name: Deploy sysctl hardening config
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-hardening.conf
+        content: |
+          # Network Hardening
+          net.ipv4.conf.all.rp_filter = 1
+          net.ipv4.conf.all.accept_redirects = 0
+          net.ipv4.conf.all.send_redirects = 0
+          net.ipv4.conf.default.accept_redirects = 0
+          net.ipv4.conf.default.send_redirects = 0
+          net.ipv4.icmp_echo_ignore_broadcasts = 1
+          net.ipv4.tcp_syncookies = 1
+          net.ipv4.conf.all.log_martians = 1
+          net.ipv4.conf.default.log_martians = 1
+          net.ipv4.icmp_ignore_bogus_error_responses = 1
+          net.ipv6.conf.all.disable_ipv6 = 1
+          net.ipv6.conf.default.disable_ipv6 = 1
+          # File System Protection
+          fs.protected_fifos = 2
+          fs.protected_regular = 2
+          fs.protected_symlinks = 1
+          fs.protected_hardlinks = 1
+          fs.suid_dumpable = 0
+          # Kernel Protection
+          kernel.kptr_restrict = 2
+          kernel.perf_event_paranoid = 3
+          kernel.dmesg_restrict = 1
+          kernel.randomize_va_space = 2
+          kernel.yama.ptrace_scope = 3
+          kernel.sysrq = 1
+          kernel.unprivileged_bpf_disabled = 1
+          net.core.bpf_jit_harden = 2
+          # Memory Protection
+          vm.mmap_min_addr = 65536
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Apply sysctl
+
+    # PAM / login.defs
+    - name: Set UMASK in login.defs
+      ansible.builtin.lineinfile:
+        path: /etc/login.defs
+        regexp: '^UMASK'
+        line: 'UMASK 027'
+
+    - name: Set PASS_MAX_DAYS
+      ansible.builtin.lineinfile:
+        path: /etc/login.defs
+        regexp: '^PASS_MAX_DAYS'
+        line: 'PASS_MAX_DAYS 90'
+
+    - name: Set PASS_MIN_DAYS
+      ansible.builtin.lineinfile:
+        path: /etc/login.defs
+        regexp: '^PASS_MIN_DAYS'
+        line: 'PASS_MIN_DAYS 7'
+
+    - name: Set SHA crypt rounds
+      ansible.builtin.blockinfile:
+        path: /etc/login.defs
+        marker: "# {mark} ANSIBLE SHA CRYPT"
+        block: |
+          SHA_CRYPT_MIN_ROUNDS 5000
+          SHA_CRYPT_MAX_ROUNDS 10000
+
+    # Legal banners
+    - name: Set /etc/issue banner
+      ansible.builtin.copy:
+        dest: /etc/issue
+        content: |
+          Authorized access only. All activity is monitored and logged.
+          Unauthorized access is strictly prohibited and will be prosecuted.
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Set /etc/issue.net banner
+      ansible.builtin.copy:
+        src: /etc/issue
+        dest: /etc/issue.net
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0644'
+
+    # Auditd rules
+    - name: Deploy auditd hardening rules
+      ansible.builtin.copy:
+        dest: /etc/audit/rules.d/hardening.rules
+        content: |
+          -w /etc/passwd -p wa -k identity
+          -w /etc/shadow -p wa -k identity
+          -w /etc/sudoers -p wa -k sudoers
+          -a always,exit -F arch=b64 -S execve -k exec
+        owner: root
+        group: root
+        mode: '0640'
+      notify: Restart auditd
+
+    # Disable core dumps
+    - name: Disable core dumps
+      ansible.builtin.lineinfile:
+        path: /etc/security/limits.conf
+        line: '* hard core 0'
+
+    # DNS
+    - name: Set resolv.conf
+      ansible.builtin.copy:
+        dest: /etc/resolv.conf
+        content: |
+          nameserver 1.1.1.1
+          nameserver 8.8.8.8
+        owner: root
+        group: root
+        mode: '0644'
+
+    # Install packages
+    - name: Install hardening packages
+      ansible.builtin.dnf:
+        name:
+          - sysstat
+          - plocate
+          - dnf-automatic
+          - ansible-core
+        state: present
+
+    - name: Enable sysstat
+      ansible.builtin.service:
+        name: sysstat
+        state: started
+        enabled: true
+
+    - name: Enable dnf-automatic timer
+      ansible.builtin.service:
+        name: dnf-automatic.timer
+        state: started
+        enabled: true
+
+    - name: Run updatedb
+      ansible.builtin.command: updatedb
+      changed_when: false
+
+    # Harden compilers
+    - name: Restrict compiler permissions
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: '0750'
+      loop:
+        - /usr/bin/gcc
+        - /usr/bin/cc
+        - /usr/bin/as
+        - /usr/bin/ld
+      ignore_errors: true
+
+    # fstab swap noexec
+    - name: Add noexec to swap in fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^(.*swap.*)\bdefaults\b(.*)'
+        replace: '\1defaults,noexec\2'
+
+    # EPEL
+    - name: Install EPEL
+      ansible.builtin.dnf:
+        name: https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+        state: present
+        disable_gpg_check: true
+
+    # Lynis
+    - name: Add Lynis repo
+      ansible.builtin.copy:
+        dest: /etc/yum.repos.d/lynis.repo
+        content: |
+          [lynis]
+          name=CISOfy Software - Lynis package
+          baseurl=https://packages.cisofy.com/community/lynis/rpm/
+          enabled=1
+          gpgcheck=1
+          gpgkey=https://packages.cisofy.com/keys/cisofy-software-rpms-public.key
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Install Lynis
+      ansible.builtin.dnf:
+        name: lynis
+        state: present
+
+  handlers:
+    - name: Restart sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+
+    - name: Apply sysctl
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/99-hardening.conf
+      changed_when: false
+
+    - name: Restart auditd
+      ansible.builtin.command: service auditd restart
+      changed_when: false

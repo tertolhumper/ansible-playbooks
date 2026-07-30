@@ -1,0 +1,60 @@
+---
+- name: Application Deployment with Rollback TEST
+  hosts: all
+  become: true
+  vars:
+    app_name: myapp
+    app_version: "3.0.0"
+    releases_dir: /opt/releases
+    current_link: /opt/current
+    keep_releases: 3
+
+  tasks:
+
+    - name: Create releases directory
+      ansible.builtin.file:
+        path: "{{ releases_dir }}/{{ app_version }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Deploy application
+      block:
+        - name: Deploy app files to release dir
+          ansible.builtin.copy:
+            dest: "{{ releases_dir }}/{{ app_version }}/index.html"
+            content: |
+              <html><body><h1>{{ app_name }} v{{ app_version }}</h1></body></html>
+            owner: root
+            group: root
+            mode: '0644'
+
+        - name: Simulate failure
+          ansible.builtin.command: /bin/false
+
+        - name: Switch symlink to new release
+          ansible.builtin.file:
+            src: "{{ releases_dir }}/{{ app_version }}"
+            dest: "{{ current_link }}"
+            state: link
+            force: true
+
+      rescue:
+        - name: Get previous release
+          ansible.builtin.shell: |
+            ls -1t {{ releases_dir }} | grep -v {{ app_version }} | head -1
+          register: previous_release
+          changed_when: false
+
+        - name: Rollback symlink to previous release
+          ansible.builtin.file:
+            src: "{{ releases_dir }}/{{ previous_release.stdout }}"
+            dest: "{{ current_link }}"
+            state: link
+            force: true
+          when: previous_release.stdout != ""
+
+        - name: Notify rollback
+          ansible.builtin.debug:
+            msg: "Deployment failed on {{ inventory_hostname }} — rolled back to {{ previous_release.stdout }}"
