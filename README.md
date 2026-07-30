@@ -34,14 +34,17 @@ ansible-playbooks/
 | disaster_recovery.yml | Backup and restore to dedicated drive | All |
 
 ## Usage
+```
 ansible-playbook --ask-become-pass <playbook>.yml
 ansible-playbook --ask-become-pass <playbook>.yml --limit rhel
-
+```
 ## Inventory
 Configure hosts in inventory.ini
+```
 arch_vm ansible_host=192.168.x.x ansible_port=XXXX ansible_user=your_user ssh_port=XXXX
-rhel_vm ansible_host=192.168.x.x ansible_port=XXXX ansible_user=your_user ssh_port=XXXX
 
+rhel_vm ansible_host=192.168.x.x ansible_port=XXXX ansible_user=your_user ssh_port=XXXX
+```
 ## Notes
 - inventory.ini contains internal IPs, update for your environment
 - Disaster recovery requires /dev/sdb1 mounted at /mnt/backup
