@@ -8,13 +8,14 @@ Production-ready Ansible playbooks for Linux infrastructure automation targeting
 - Python 3.x on managed nodes
 
 ## Structure
+
 ansible-playbooks/
 ├── ansible.cfg
 ├── inventory.ini
 ├── templates/
-│   └── sshd_config.j2
+│ └── sshd_config.j2
 ├── reports/
-└── playbooks...
+└── playbooks
 
 ## Playbooks
 | Playbook | Description | Targets |
