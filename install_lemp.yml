@@ -1,0 +1,137 @@
+---
+- name: Install LEMP Stack (nginx + PHP + MariaDB)
+  hosts: all
+  become: true
+  tasks:
+
+    - name: Install nginx (Arch)
+      community.general.pacman:
+        name: nginx
+        state: latest
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Install nginx (RHEL)
+      ansible.builtin.dnf:
+        name: nginx
+        state: latest
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Install PHP and extensions (Arch)
+      community.general.pacman:
+        name:
+          - php
+          - php-fpm
+          - php-gd
+          - php-apcu
+        state: latest
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Install PHP and extensions (RHEL)
+      ansible.builtin.dnf:
+        name:
+          - php
+          - php-fpm
+          - php-mysqlnd
+          - php-gd
+          - php-mbstring
+          - php-xml
+          - php-intl
+          - php-opcache
+          - php-json
+          - php-pecl-zip
+          - php-pecl-redis6
+        state: latest
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Install MariaDB (Arch)
+      community.general.pacman:
+        name:
+          - mariadb
+        state: latest
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Install MariaDB (RHEL)
+      ansible.builtin.dnf:
+        name:
+          - mariadb-server
+        state: latest
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Install Redis (Arch)
+      community.general.pacman:
+        name:
+          - redis
+        state: latest
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Install KeyDB as Redis replacement (RHEL)
+      ansible.builtin.dnf:
+        name:
+          - keydb
+        state: latest
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Initialize MariaDB data directory (Arch)
+      ansible.builtin.command:
+        cmd: mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
+        creates: /var/lib/mysql/mysql
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Download Composer installer
+      ansible.builtin.get_url:
+        url: https://getcomposer.org/installer
+        dest: /tmp/composer-setup.php
+        mode: '0755'
+
+    - name: Install Composer globally
+      ansible.builtin.command:
+        cmd: php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+        creates: /usr/local/bin/composer
+
+    - name: Remove Composer installer
+      ansible.builtin.file:
+        path: /tmp/composer-setup.php
+        state: absent
+
+    - name: Allow http and https through firewalld (RHEL)
+      ansible.posix.firewalld:
+        service: "{{ item }}"
+        permanent: true
+        state: enabled
+        immediate: true
+      loop:
+        - http
+        - https
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Enable and start nginx
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Enable and start php-fpm
+      ansible.builtin.service:
+        name: php-fpm
+        state: started
+        enabled: true
+
+    - name: Enable and start MariaDB
+      ansible.builtin.service:
+        name: mariadb
+        state: started
+        enabled: true
+
+    - name: Enable and start Redis (Arch)
+      ansible.builtin.service:
+        name: redis
+        state: started
+        enabled: true
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Enable and start KeyDB (RHEL)
+      ansible.builtin.service:
+        name: keydb
+        state: started
+        enabled: true
+      when: ansible_facts['os_family'] == "RedHat"
