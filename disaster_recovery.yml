@@ -2,6 +2,7 @@
 - name: Disaster Recovery - Backup
   hosts: all
   become: true
+  tags: backup
   vars:
     backup_base: /mnt/backup
     timestamp: "{{ ansible_facts['date_time']['date'] }}"
@@ -13,9 +14,7 @@
       - /opt
       - /root
     retention_days: 7
-
   tasks:
-
     - name: Create backup directory on control node
       ansible.builtin.file:
         path: "{{ backup_base }}/{{ inventory_hostname }}/{{ timestamp }}"
@@ -62,10 +61,10 @@
 - name: Disaster Recovery - Restore
   hosts: all
   become: true
+  tags: restore
   vars:
     backup_base: /mnt/backup
   tasks:
-
     - name: Find latest backup
       ansible.builtin.shell: |
         ls -1t {{ backup_base }}/{{ inventory_hostname }}/ | head -1

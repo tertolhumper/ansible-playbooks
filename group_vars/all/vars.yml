@@ -1,0 +1,2 @@
+mariadb_root_password: "{{ vault_mariadb_root_password }}"
+duckdns_token: "{{ vault_duckdns_token }}"

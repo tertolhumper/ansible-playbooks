@@ -135,3 +135,8 @@
         state: started
         enabled: true
       when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Set MariaDB root password
+      ansible.builtin.command:
+        cmd: mariadb -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ mariadb_root_password }}'; FLUSH PRIVILEGES;"
+      ignore_errors: true
