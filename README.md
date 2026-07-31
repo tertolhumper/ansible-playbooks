@@ -24,6 +24,7 @@ ansible-playbooks/
 |----------|-------------|---------|
 | install_nginx.yml | Install and start nginx | All |
 | remove_nginx.yml | Stop and remove nginx | All |
+| install_lemp.yml | Install LEMP stack (nginx + PHP + MariaDB + Redis + Composer) 
 | config_management.yml | Deploy sshd_config via Jinja2 template | All |
 | user_management.yml | Create sysadmin user and push SSH key | All |
 | patch_management.yml | Update packages with reboot handling | All |
