@@ -50,3 +50,22 @@ rhel_vm ansible_host=192.168.x.x ansible_port=XXXX ansible_user=your_user ssh_po
 - Disaster recovery requires /dev/sdb1 mounted at /mnt/backup
 - cert_rotation.yml requires a public domain and DuckDNS token
 - rhel_hardening.yml requires active RHEL subscription for nginx
+
+## Disaster Recovery Usage
+```bash
+# Backup only
+ansible-playbook --ask-become-pass disaster_recovery.yml --tags backup
+
+# Restore only
+ansible-playbook --ask-become-pass disaster_recovery.yml --tags restore
+
+# Target specific host
+ansible-playbook --ask-become-pass disaster_recovery.yml --tags restore --limit rhel
+```
+
+## Disaster Recovery Notes
+- Backup drive must be mounted at /mnt/backup before running
+- Backups stored at /mnt/backup/<hostname>/<date>/
+- Retention: 7 days, older backups purged automatically
+- Tested: deleted /etc/nginx on RHEL, restored successfully from backup
+- Backup includes: /etc, /home, /var/log, /var/www, /opt, /root
