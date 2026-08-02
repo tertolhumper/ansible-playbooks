@@ -19,12 +19,6 @@
       when: ansible_facts['os_family'] == "RedHat"
       register: rhel_update
 
-    - name: Check if reboot is required (Arch)
-      ansible.builtin.stat:
-        path: /var/run/reboot-required
-      register: reboot_required_arch
-      when: ansible_facts['os_family'] == "Archlinux"
-
     - name: Check if kernel was updated (RHEL)
       ansible.builtin.command: needs-restarting -r
       register: reboot_required_rhel
@@ -32,13 +26,24 @@
       changed_when: false
       when: ansible_facts['os_family'] == "RedHat"
 
+    - name: Get running kernel version
+      ansible.builtin.command: uname -r
+      register: running_kernel
+      changed_when: false
+
+    - name: Get installed kernel versions
+      ansible.builtin.shell: ls -1 /usr/lib/modules | sort -V | tail -n 1
+      register: installed_kernel
+      changed_when: false
+      when: ansible_facts['os_family'] == "Archlinux"
+
     - name: Reboot if required (Arch)
       ansible.builtin.reboot:
         msg: "Rebooting after package updates"
         reboot_timeout: 300
       when:
         - ansible_facts['os_family'] == "Archlinux"
-        - reboot_required_arch.stat.exists
+        - running_kernel.stdout != installed_kernel.stdout    
 
     - name: Reboot if required (RHEL)
       ansible.builtin.reboot:
@@ -50,3 +55,8 @@
 
     - name: Verify servers are back online
       ansible.builtin.ping:
+
+    - name: Show upgraded packages (RHEL)
+      ansible.builtin.command: dnf history info last
+      when: ansible_facts.os_family == "RedHat"
+
