@@ -71,3 +71,6 @@ ansible-playbook --ask-become-pass disaster_recovery.yml --tags restore --limit 
 - Retention: 7 days, older backups purged automatically
 - Tested: deleted /etc/nginx on RHEL, restored successfully from backup
 - Backup includes: /etc, /home, /var/log, /var/www, /opt, /root
+
+## Kubernetes Note
+-  Run `sudo swapoff -a` on Ubuntu before executing the deploy playbook. 
