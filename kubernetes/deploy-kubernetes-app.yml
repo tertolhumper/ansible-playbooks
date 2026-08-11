@@ -1,0 +1,57 @@
+---
+- name: Deploy Kubernetes App
+  hosts: ubuntu
+  become: true
+  tasks:
+
+    - name: Disable swap (required for Kubernetes)
+      ansible.builtin.command: swapoff -a
+
+    - name: Disable zram-config service
+      ansible.builtin.systemd:
+        name: zram-config
+        state: stopped
+        enabled: false
+
+    - name: Copy Kubernetes manifests to ubuntu
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: /home/tertol/kubernetes/
+        owner: tertol
+        group: tertol
+        mode: '0644'
+      loop:
+        - mongo-secret.yaml
+        - mongo-config.yaml
+        - mongo.yaml
+        - webapp.yaml
+
+    - name: Apply mongo secret
+      ansible.builtin.command:
+        cmd: kubectl apply -f /home/tertol/kubernetes/mongo-secret.yaml
+      become: false
+
+    - name: Apply mongo configmap
+      ansible.builtin.command:
+        cmd: kubectl apply -f /home/tertol/kubernetes/mongo-config.yaml
+      become: false
+
+    - name: Apply mongo deployment and service
+      ansible.builtin.command:
+        cmd: kubectl apply -f /home/tertol/kubernetes/mongo.yaml
+      become: false
+
+    - name: Apply webapp deployment and service
+      ansible.builtin.command:
+        cmd: kubectl apply -f /home/tertol/kubernetes/webapp.yaml
+      become: false
+
+    - name: Verify pods are running
+      ansible.builtin.command:
+        cmd: kubectl get pods
+      become: false
+      register: pod_status
+
+    - name: Show pod status
+      ansible.builtin.debug:
+        msg: "{{ pod_status.stdout }}"

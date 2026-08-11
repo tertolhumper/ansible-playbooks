@@ -33,6 +33,7 @@ ansible-playbooks/
 | app_deployment.yml | Deploy app with symlink rollback | All |
 | cert_rotation.yml | Lets Encrypt certificate renewal | RHEL |
 | disaster_recovery.yml | Backup and restore to dedicated drive | All |
+| kubernetes/deploy-kubernetes-app.yml | Deploy MongoDB + webapp to Kubernetes cluster | Ubuntu |
 
 ## Usage
 ```
