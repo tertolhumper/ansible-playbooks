@@ -13,10 +13,16 @@ Ansible playbooks for Linux infrastructure automation targeting Arch Linux and R
 ansible-playbooks/
 ├── ansible.cfg
 ├── inventory.ini
+├── README.md
 ├── templates/
 │   └── sshd_config.j2
 ├── reports/
-└── playbooks/
+└── kubernetes/
+    ├── mongo.yaml
+    ├── mongo-secret.yaml
+    ├── mongo-config.yaml
+    ├── webapp.yaml
+    └── deploy-kubernetes-app.yml
 ```
 
 ## Playbooks
