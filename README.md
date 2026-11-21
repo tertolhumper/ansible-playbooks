@@ -1,82 +1,86 @@
-# Ansible Playbooks
+# ansible-playbooks
 
-Ansible playbooks for Linux infrastructure automation targeting Arch Linux and RHEL 10.
+Ansible playbooks for Sentinel NSM Kubernetes cluster bootstrap and infrastructure automation.
 
 ## Requirements
-- Ansible 14.x
+
+- Ansible 2.15+
 - SSH key-based authentication
 - Python 3.x on managed nodes
+- RHEL 10 on all cluster nodes
 
 ## Structure
 
-```
-ansible-playbooks/
-├── ansible.cfg
-├── inventory.ini
-├── README.md
-├── templates/
-│   └── sshd_config.j2
-├── reports/
-└── kubernetes/
-    ├── mongo.yaml
-    ├── mongo-secret.yaml
-    ├── mongo-config.yaml
-    ├── webapp.yaml
-    └── deploy-kubernetes-app.yml
-```
+    ansible-playbooks/
+    ├── ansible.cfg
+    ├── inventory.ini
+    ├── agent
+    ├── files/
+    ├── helm/
+    ├── manifests/
+    ├── playbooks/
+    └── *.yml
 
-## Playbooks
-| Playbook | Description | Targets |
-|----------|-------------|---------|
-| install_nginx.yml | Install and start nginx | All |
-| remove_nginx.yml | Stop and remove nginx | All |
-| install_lemp.yml | Install LEMP stack (nginx + PHP + MariaDB) | All | 
-| config_management.yml | Deploy sshd_config via Jinja2 template | All |
-| user_management.yml | Create sysadmin user and push SSH key | All |
-| patch_management.yml | Update packages with reboot handling | All |
-| rhel_hardening.yml | CIS-based security hardening | RHEL |
-| compliance_report.yml | Generate compliance reports | All |
-| app_deployment.yml | Deploy app with symlink rollback | All |
-| cert_rotation.yml | Lets Encrypt certificate renewal | RHEL |
-| disaster_recovery.yml | Backup and restore to dedicated drive | All |
-| kubernetes/deploy-kubernetes-app.yml | Deploy MongoDB + webapp to Kubernetes cluster | Ubuntu |
+## Inventory Groups
+
+| Group | Hosts | Purpose |
+|---|---|---|
+| k8s_nodes | rhel-node1/2/3 | Control plane nodes |
+| k8s_workers | rhel-worker1/2 | Worker nodes |
+| k8s_storage | rhel-storage | NFS storage node |
+
+## Bootstrap Playbooks
+
+| Playbook | Description |
+|---|---|
+| initial-config.yml | Base OS configuration for all nodes |
+| k8s-prereqs.yml | Kubernetes prerequisites (sysctl, modules) |
+| k8s-install.yml | Install containerd, kubeadm, kubelet, kubectl |
+| kubeadm-init.yml | Initialize control plane via kubeadm |
+| kubeadm-join-control.yml | Join additional control plane nodes |
+| haproxy.yml | HAProxy load balancer setup |
+| keepalived.yml | Keepalived VIP for API server HA |
+| nfs-server.yml | NFS server setup on storage node |
+| cilium.yml | Cilium CNI installation |
+| docker-repo-fix.yml | Fix Docker repo for RHEL |
+| qemu-guest-agent.yml | QEMU guest agent for Proxmox |
+
+## Helm Deployment Playbooks
+
+| Playbook | Description |
+|---|---|
+| helm-install.yml | Install Helm |
+| helm-vault.yml | Deploy HashiCorp Vault HA |
+| helm-prometheus.yml | Deploy kube-prometheus-stack |
+| helm-nfs.yml | Deploy NFS provisioner |
+| helm-lemp.yml | Deploy LEMP stack |
+| helm-lemp-site.yml | Deploy LEMP site config |
+
+## Operational Playbooks
+
+| Playbook | Description |
+|---|---|
+| playbooks/etcd-backup.yml | etcd snapshot backup to Proxmox |
+| playbooks/etcd-metrics.yml | Expose etcd metrics for Prometheus |
+| playbooks/vault-unseal.yml | Unseal Vault after restart |
+| playbooks/cluster-health.yml | Cluster health checks |
+| playbooks/patch_management.yml | OS patching with reboot handling |
 
 ## Usage
-```
-ansible-playbook --ask-become-pass <playbook>.yml
-ansible-playbook --ask-become-pass <playbook>.yml --limit rhel
-```
-## Inventory
-Configure hosts in inventory.ini
-```
-arch_vm ansible_host=192.168.x.x ansible_port=XXXX ansible_user=your_user ssh_port=XXXX
 
-rhel_vm ansible_host=192.168.x.x ansible_port=XXXX ansible_user=your_user ssh_port=XXXX
-```
+    # Bootstrap a new cluster
+    ansible-playbook initial-config.yml -i inventory.ini -K
+    ansible-playbook k8s-prereqs.yml -i inventory.ini -K
+    ansible-playbook k8s-install.yml -i inventory.ini -K
+    ansible-playbook kubeadm-init.yml -i inventory.ini -K
+
+    # Operational tasks
+    ansible-playbook playbooks/etcd-backup.yml -i inventory.ini -K
+    ansible-playbook playbooks/vault-unseal.yml -i inventory.ini -K
+
 ## Notes
-- inventory.ini contains internal IPs, update for your environment
-- Disaster recovery requires /dev/sdb1 mounted at /mnt/backup
-- cert_rotation.yml requires a public domain and DuckDNS token
-- rhel_hardening.yml requires active RHEL subscription for nginx
 
-## Disaster Recovery Usage
-```bash
-# Backup only
-ansible-playbook --ask-become-pass disaster_recovery.yml --tags backup
-
-# Restore only
-ansible-playbook --ask-become-pass disaster_recovery.yml --tags restore
-
-# Target specific host
-ansible-playbook --ask-become-pass disaster_recovery.yml --tags restore --limit rhel
-```
-
-## Disaster Recovery Notes
-- Backup drive must be mounted at /mnt/backup before running
-- Backups stored at /mnt/backup/<hostname>/<date>/
-- Retention: 7 days, older backups purged automatically
-- Tested: deleted /etc/nginx on RHEL, restored successfully from backup
-- Backup includes: /etc, /home, /var/log, /var/www, /opt, /root
-
-## Kubernetes Note
--  Run `sudo swapoff -a` on Ubuntu before executing the deploy playbook. 
+- inventory.ini contains internal cluster IPs — update for your environment
+- vault-keys.yml is Ansible Vault encrypted — safe to commit
+- helm-lemp.yml contains placeholder passwords — update before running
+- etcd backups stored on Proxmox at /mnt/backup/etcd, 7-day retention
