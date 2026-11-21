@@ -5,12 +5,26 @@
   vars_files:
     - ~/ansible-proxmox/vault-keys.yml
   tasks:
-    - name: Check if Vault is sealed
+    - name: Check if vault-0 is sealed
       command: kubectl exec -n vault vault-0 -- vault status -format=json
-      register: vault_status
+      register: vault0_status
       changed_when: false
       ignore_errors: true
-      failed_when: vault_status.rc not in [0, 1, 2]
+      failed_when: vault0_status.rc not in [0, 1, 2]
+
+    - name: Check if vault-1 is sealed
+      command: kubectl exec -n vault vault-1 -- vault status -format=json
+      register: vault1_status
+      changed_when: false
+      ignore_errors: true
+      failed_when: vault1_status.rc not in [0, 1, 2]
+
+    - name: Check if vault-2 is sealed
+      command: kubectl exec -n vault vault-2 -- vault status -format=json
+      register: vault2_status
+      changed_when: false
+      ignore_errors: true
+      failed_when: vault2_status.rc not in [0, 1, 2]
 
     - name: Unseal vault-0
       command: kubectl exec -n vault vault-0 -- vault operator unseal {{ item }}
@@ -18,7 +32,7 @@
         - "{{ vault_unseal_key1 }}"
         - "{{ vault_unseal_key2 }}"
         - "{{ vault_unseal_key3 }}"
-      when: (vault_status.stdout | from_json).sealed | default(true)
+      when: (vault0_status.stdout | from_json).sealed | default(true)
       no_log: true
 
     - name: Unseal vault-1
@@ -27,7 +41,7 @@
         - "{{ vault_unseal_key1 }}"
         - "{{ vault_unseal_key2 }}"
         - "{{ vault_unseal_key3 }}"
-      when: (vault_status.stdout | from_json).sealed | default(true)
+      when: (vault1_status.stdout | from_json).sealed | default(true)
       no_log: true
 
     - name: Unseal vault-2
@@ -36,7 +50,7 @@
         - "{{ vault_unseal_key1 }}"
         - "{{ vault_unseal_key2 }}"
         - "{{ vault_unseal_key3 }}"
-      when: (vault_status.stdout | from_json).sealed | default(true)
+      when: (vault2_status.stdout | from_json).sealed | default(true)
       no_log: true
 
     - name: Verify Vault is unsealed
