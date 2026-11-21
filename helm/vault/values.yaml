@@ -1,0 +1,17 @@
+server:
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+      setNodeId: true
+  dataStorage:
+    enabled: true
+    storageClass: nfs-client
+    size: 5Gi
+    accessMode: ReadWriteMany
+
+ui:
+  enabled: true
+  serviceType: NodePort
+  serviceNodePort: 30200

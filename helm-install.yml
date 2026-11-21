@@ -1,0 +1,81 @@
+---
+- name: Install Helm on control plane nodes
+  hosts: k8s_nodes
+  become: yes
+
+  vars:
+    helm_version: "v3.17.3"
+    helm_arch: "linux-amd64"
+    helm_tarball: "helm-{{ helm_version }}-{{ helm_arch }}.tar.gz"
+    helm_url: "https://get.helm.sh/{{ helm_tarball }}"
+    helm_bin: /usr/local/bin/helm
+
+  tasks:
+
+    - name: Check if helm is already installed
+      stat:
+        path: "{{ helm_bin }}"
+      register: helm_installed
+
+    - name: Check installed helm version
+      shell: helm version --short 2>/dev/null || echo "not installed"
+      register: helm_current_version
+      changed_when: false
+      when: helm_installed.stat.exists
+
+    - name: Download helm tarball
+      get_url:
+        url: "{{ helm_url }}"
+        dest: /tmp/{{ helm_tarball }}
+        mode: '0644'
+      when: not helm_installed.stat.exists or helm_version not in (helm_current_version.stdout | default(''))
+
+    - name: Extract helm binary
+      unarchive:
+        src: /tmp/{{ helm_tarball }}
+        dest: /tmp/
+        remote_src: yes
+      when: not helm_installed.stat.exists or helm_version not in (helm_current_version.stdout | default(''))
+
+    - name: Install helm binary
+      copy:
+        src: /tmp/{{ helm_arch }}/helm
+        dest: "{{ helm_bin }}"
+        remote_src: yes
+        owner: root
+        group: root
+        mode: '0755'
+      when: not helm_installed.stat.exists or helm_version not in (helm_current_version.stdout | default(''))
+
+    - name: Clean up tarball
+      file:
+        path: /tmp/{{ helm_tarball }}
+        state: absent
+
+    - name: Verify helm installation
+      shell: helm version --short
+      register: helm_version_output
+      changed_when: false
+      become: no
+      become_user: tertol
+
+    - name: Show helm version
+      debug:
+        msg: "{{ helm_version_output.stdout }}"
+
+    - name: Add Cilium helm repo
+      shell: helm repo add cilium https://helm.cilium.io/
+      register: repo_add
+      changed_when: "'already exists' not in repo_add.stdout"
+      become: no
+      become_user: tertol
+      environment:
+        KUBECONFIG: /home/tertol/.kube/config
+
+    - name: Update helm repos
+      shell: helm repo update
+      changed_when: false
+      become: no
+      become_user: tertol
+      environment:
+        KUBECONFIG: /home/tertol/.kube/config

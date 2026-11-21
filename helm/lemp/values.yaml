@@ -1,0 +1,20 @@
+# Passwords managed via Vault + ESO — do not hardcode here
+# See vault secret: secret/lemp
+
+mariadb:
+  auth:
+    existingSecret: mariadb-secret
+    database: calmapps
+    username: calmapps
+  primary:
+    persistence:
+      enabled: false
+
+nginx:
+  service:
+    type: NodePort
+    nodePort: 30080
+  replicas: 2
+
+phpfpm:
+  replicas: 2

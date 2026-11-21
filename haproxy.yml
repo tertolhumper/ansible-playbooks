@@ -1,0 +1,130 @@
+---
+- name: Install and Configure HAProxy for K8s HA
+  hosts: k8s_nodes
+  become: yes
+
+  vars:
+    vip: "192.168.100.20"
+    control_plane_nodes:
+      - { name: rhel-node1, ip: "192.168.100.11" }
+      - { name: rhel-node2, ip: "192.168.100.12" }
+      - { name: rhel-node3, ip: "192.168.100.13" }
+    haproxy_port: 8443
+
+  tasks:
+
+    - name: Install HAProxy
+      dnf:
+        name: haproxy
+        state: present
+
+    - name: Deploy HAProxy config
+      copy:
+        dest: /etc/haproxy/haproxy.cfg
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          #---------------------------------------------------------------------
+          # Global settings
+          #---------------------------------------------------------------------
+          global
+              log         /dev/log local0
+              chroot      /var/lib/haproxy
+              pidfile     /var/run/haproxy.pid
+              maxconn     4000
+              user        haproxy
+              group       haproxy
+              daemon
+              stats socket /var/lib/haproxy/stats
+
+          #---------------------------------------------------------------------
+          # Defaults
+          #---------------------------------------------------------------------
+          defaults
+              mode                    http
+              log                     global
+              option                  httplog
+              option                  dontlognull
+              option                  http-server-close
+              option                  forwardfor except 127.0.0.0/8
+              option                  redispatch
+              retries                 3
+              timeout http-request    10s
+              timeout queue           1m
+              timeout connect         10s
+              timeout client          1m
+              timeout server          1m
+              timeout http-keep-alive 10s
+              timeout check           10s
+              maxconn                 3000
+
+          #---------------------------------------------------------------------
+          # K8s API Server Frontend
+          #---------------------------------------------------------------------
+          frontend k8s-api
+              bind *:{{ haproxy_port }}
+              mode tcp
+              option tcplog
+              default_backend k8s-api-backend
+
+          #---------------------------------------------------------------------
+          # K8s API Server Backend
+          #---------------------------------------------------------------------
+          backend k8s-api-backend
+              mode tcp
+              option tcp-check
+              balance roundrobin
+              default-server inter 10s downinter 5s rise 2 fall 2 slowstart 60s maxconn 250 maxqueue 256 weight 100
+          {% for node in control_plane_nodes %}
+              server {{ node.name }} {{ node.ip }}:6443 check
+          {% endfor %}
+
+          #---------------------------------------------------------------------
+          # HAProxy Stats
+          #---------------------------------------------------------------------
+          listen stats
+              bind *:9000
+              mode http
+              stats enable
+              stats uri /stats
+              stats refresh 10s
+              stats auth admin:admin
+
+      notify: Restart HAProxy
+
+    - name: Validate HAProxy config
+      command: haproxy -c -f /etc/haproxy/haproxy.cfg
+      changed_when: false
+
+    - name: Open HAProxy port in firewalld
+      firewalld:
+        port: "{{ haproxy_port }}/tcp"
+        permanent: yes
+        state: enabled
+      notify: Reload firewalld
+
+    - name: Open HAProxy stats port in firewalld
+      firewalld:
+        port: 9000/tcp
+        permanent: yes
+        state: enabled
+      notify: Reload firewalld
+
+    - name: Enable and start HAProxy
+      systemd:
+        name: haproxy
+        enabled: yes
+        state: started
+
+  handlers:
+
+    - name: Restart HAProxy
+      systemd:
+        name: haproxy
+        state: restarted
+
+    - name: Reload firewalld
+      service:
+        name: firewalld
+        state: reloaded

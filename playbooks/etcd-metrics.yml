@@ -1,0 +1,50 @@
+---
+- name: Configure etcd Prometheus metrics listener
+  hosts: k8s_nodes
+  become: true
+  gather_facts: false
+  serial: 1
+
+  vars:
+    etcd_manifest: /etc/kubernetes/manifests/etcd.yaml
+
+  tasks:
+    - name: Check etcd manifest exists
+      ansible.builtin.stat:
+        path: "{{ etcd_manifest }}"
+      register: manifest_stat
+      failed_when: not manifest_stat.stat.exists
+
+    - name: Patch listen-metrics-urls in etcd manifest
+      ansible.builtin.replace:
+        path: "{{ etcd_manifest }}"
+        regexp: '(?m)^(\s*-\s*--listen-metrics-urls=).*?$'
+        replace: '\g<1>http://0.0.0.0:2381'
+        backup: true
+      register: manifest_changed
+
+    - name: Force kubelet to re-read manifest (touch triggers inotify)
+      ansible.builtin.command:
+        cmd: touch "{{ etcd_manifest }}"
+      when: manifest_changed.changed
+
+    - name: Wait for etcd static pod to restart
+      ansible.builtin.pause:
+        seconds: 45
+      when: manifest_changed.changed
+
+    - name: Verify flag is present in manifest file
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -F
+          - --
+          - "--listen-metrics-urls=http://0.0.0.0:2381"
+          - "{{ etcd_manifest }}"
+      changed_when: false
+
+    - name: Confirm etcd is listening on 2381
+      ansible.builtin.shell: "ss -tlnp | grep 2381"
+      register: port_check
+      changed_when: false
+      failed_when: "'2381' not in port_check.stdout"

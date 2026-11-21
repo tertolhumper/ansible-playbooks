@@ -1,0 +1,63 @@
+---
+- name: Install NFS subdir external provisioner
+  hosts: rhel-node1
+  become: true
+
+  vars:
+    nfs_server_ip: "192.168.100.16"
+    nfs_path: /srv/nfs/k8s
+    helm_release: nfs-provisioner
+    helm_ns: nfs-provisioner
+    helm_bin: /usr/local/bin/helm
+
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+  tasks:
+    - name: Add NFS provisioner Helm repo
+      ansible.builtin.command:
+        cmd: "{{ helm_bin }} repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/"
+      register: repo_add
+      failed_when: repo_add.rc != 0 and 'already exists' not in repo_add.stderr
+      changed_when: "'already exists' not in repo_add.stderr"
+
+    - name: Update Helm repos
+      ansible.builtin.command:
+        cmd: "{{ helm_bin }} repo update"
+      changed_when: false
+
+    - name: Create namespace
+      ansible.builtin.command:
+        cmd: kubectl create namespace {{ helm_ns }}
+      register: ns_result
+      failed_when: ns_result.rc != 0 and 'already exists' not in ns_result.stderr
+      changed_when: "'already exists' not in ns_result.stderr"
+
+    - name: Check if NFS provisioner already deployed
+      ansible.builtin.command:
+        cmd: "{{ helm_bin }} status {{ helm_release }} -n {{ helm_ns }}"
+      register: helm_status
+      failed_when: false
+      changed_when: false
+
+    - name: Install NFS provisioner via Helm
+      ansible.builtin.command:
+        cmd: >
+          {{ helm_bin }} install {{ helm_release }}
+          nfs-subdir-external-provisioner/nfs-subdir-external-provisioner
+          -n {{ helm_ns }}
+          --set nfs.server={{ nfs_server_ip }}
+          --set nfs.path={{ nfs_path }}
+          --set storageClass.name=nfs-client
+          --set storageClass.defaultClass=true
+      when: helm_status.rc != 0
+
+    - name: Verify StorageClass
+      ansible.builtin.command:
+        cmd: kubectl get storageclass
+      register: sc_out
+      changed_when: false
+
+    - name: Show StorageClass
+      ansible.builtin.debug:
+        msg: "{{ sc_out.stdout_lines }}"

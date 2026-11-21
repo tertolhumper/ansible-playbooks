@@ -1,0 +1,68 @@
+---
+- name: Install Prometheus and Grafana via Helm
+  hosts: rhel-node1
+  become: true
+
+  vars:
+    helm_bin: /usr/local/bin/helm
+    prometheus_ns: monitoring
+
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+  tasks:
+    - name: Add Prometheus community Helm repo
+      ansible.builtin.command:
+        cmd: "{{ helm_bin }} repo add prometheus-community https://prometheus-community.github.io/helm-charts"
+      register: repo_add
+      failed_when: repo_add.rc != 0 and 'already exists' not in repo_add.stderr
+      changed_when: "'already exists' not in repo_add.stderr"
+
+    - name: Update Helm repos
+      ansible.builtin.command:
+        cmd: "{{ helm_bin }} repo update"
+      changed_when: false
+
+    - name: Create monitoring namespace
+      ansible.builtin.command:
+        cmd: kubectl create namespace {{ prometheus_ns }}
+      register: ns_result
+      failed_when: ns_result.rc != 0 and 'already exists' not in ns_result.stderr
+      changed_when: "'already exists' not in ns_result.stderr"
+
+    - name: Check if kube-prometheus-stack already deployed
+      ansible.builtin.command:
+        cmd: "{{ helm_bin }} status kube-prometheus-stack -n {{ prometheus_ns }}"
+      register: helm_status
+      failed_when: false
+      changed_when: false
+
+    - name: Install kube-prometheus-stack
+      ansible.builtin.command:
+        cmd: >
+          {{ helm_bin }} install kube-prometheus-stack
+          prometheus-community/kube-prometheus-stack
+          -n {{ prometheus_ns }}
+          --set grafana.admin.existingSecret=grafana-admin-secret \
+          --set grafana.admin.userKey=admin-user \
+          --set grafana.admin.passwordKey=admin-password
+          --set grafana.service.type=NodePort
+          --set grafana.service.nodePort=30030
+          --set prometheus.service.type=NodePort
+          --set prometheus.service.nodePort=30090
+          --set alertmanager.enabled=false
+          --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=nfs-client
+          --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.accessModes[0]=ReadWriteMany
+          --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=5Gi
+      when: helm_status.rc != 0
+
+    - name: Verify pods
+      ansible.builtin.command:
+        cmd: kubectl get pods -n {{ prometheus_ns }}
+      register: pods_out
+      changed_when: false
+
+    - name: Show pods
+      ansible.builtin.debug:
+        msg: "{{ pods_out.stdout_lines }}"
+

@@ -1,0 +1,37 @@
+# Policy 3: php-fpm only from nginx
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: php-fpm-from-nginx-only
+  namespace: lemp
+spec:
+  endpointSelector:
+    matchLabels:
+      app: php-fpm
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        app: nginx
+    toPorts:
+    - ports:
+      - port: "9000"
+        protocol: TCP
+---
+# Policy 4: mariadb only from php-fpm
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: mariadb-from-php-fpm-only
+  namespace: lemp
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: mariadb
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        app: php-fpm
+    toPorts:
+    - ports:
+      - port: "3306"
+        protocol: TCP

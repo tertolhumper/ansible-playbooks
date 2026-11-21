@@ -1,0 +1,108 @@
+---
+- name: K8s Cluster Health Check
+  hosts: localhost
+  become: false
+  tasks:
+    - name: Check node status
+      command: kubectl get nodes -o wide
+      register: nodes
+      changed_when: false
+
+    - name: Show nodes
+      debug:
+        msg: "{{ nodes.stdout_lines }}"
+
+    - name: Check for NotReady nodes
+      command: kubectl get nodes --no-headers
+      register: node_status
+      changed_when: false
+      failed_when: "'NotReady' in node_status.stdout"
+
+    - name: Check all pods
+      command: kubectl get pods -A --no-headers
+      register: pods
+      changed_when: false
+
+    - name: Check for non-running pods
+      command: kubectl get pods -A --no-headers
+      register: pod_status
+      changed_when: false
+      failed_when: >
+        'Pending' in pod_status.stdout or
+        'CrashLoopBackOff' in pod_status.stdout or
+        'Error' in pod_status.stdout or
+        'OOMKilled' in pod_status.stdout
+
+    - name: Check PVCs
+      command: kubectl get pvc -A --no-headers
+      register: pvcs
+      changed_when: false
+      failed_when: "'Pending' in pvcs.stdout"
+
+    - name: Check services and NodePorts
+      command: kubectl get svc -A --no-headers
+      register: services
+      changed_when: false
+
+    - name: Show services
+      debug:
+        msg: "{{ services.stdout_lines }}"
+
+    - name: Check Vault status
+      command: kubectl exec -n vault vault-0 -- vault status
+      register: vault_status
+      changed_when: false
+      ignore_errors: true
+
+    - name: Show Vault status
+      debug:
+        msg: "{{ vault_status.stdout_lines }}"
+
+    - name: Check sentinel-nsm.com is up
+      uri:
+        url: "https://sentinel-nsm.com"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: site_check
+      changed_when: false
+      failed_when: site_check.status != 200
+
+    - name: Check LEMP NodePort
+      uri:
+        url: "http://192.168.100.20:30080"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: lemp_check
+      changed_when: false
+      failed_when: lemp_check.status != 200
+
+    - name: Check Grafana NodePort
+      uri:
+        url: "http://192.168.100.20:30030"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: grafana_check
+      changed_when: false
+
+    - name: Check node resource usage
+      command: kubectl top nodes
+      register: top_nodes
+      changed_when: false
+      ignore_errors: true
+
+    - name: Show node resource usage
+      debug:
+        msg: "{{ top_nodes.stdout_lines }}"
+
+    - name: Cluster health summary
+      debug:
+        msg:
+          - "Nodes: OK"
+          - "Pods: OK"
+          - "PVCs: OK"
+          - "Vault: {{ 'OK' if vault_status.rc == 0 else 'SEALED or ERROR' }}"
+          - "sentinel-nsm.com: {{ 'OK' if site_check.status == 200 else 'DOWN' }}"
+          - "LEMP NodePort: {{ 'OK' if lemp_check.status == 200 else 'DOWN' }}"

@@ -1,0 +1,39 @@
+---
+- name: K8s Prerequisites
+  hosts: k8s_nodes:k8s_workers:k8s_storage
+#  hosts: new_vm
+  become: yes
+  tasks:
+    - name: Open K8s firewall ports
+      firewalld:
+        port: "{{ item }}"
+        permanent: yes
+        state: enabled
+      loop:
+        - 2381/tcp
+        - 6443/tcp
+        - 2379-2380/tcp
+        - 10250/tcp
+        - 10251/tcp
+        - 10252/tcp
+        - 10255/tcp
+        - 30000-32767/tcp
+        - 8472/udp
+        - 4244/tcp
+        - 12000/tcp
+        - 30080/tcp
+        - 9100/tcp
+        - 9090/tcp
+        - 9965/tcp
+        - 10249/tcp
+
+    - name: Enable masquerade
+      firewalld:
+        masquerade: yes
+        permanent: yes
+        state: enabled
+
+    - name: Reload firewalld
+      service:
+        name: firewalld
+        state: reloaded

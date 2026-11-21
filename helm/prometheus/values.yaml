@@ -1,0 +1,26 @@
+grafana:
+  admin:
+    existingSecret: grafana-admin-secret
+    userKey: admin-user
+    passwordKey: admin-password
+  service:
+    type: NodePort
+    nodePort: 30030
+
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30090
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: nfs-client
+          accessModes:
+            - ReadWriteMany
+          resources:
+            requests:
+              storage: 5Gi
+
+alertmanager:
+  enabled: false

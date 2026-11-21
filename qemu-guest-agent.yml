@@ -1,0 +1,17 @@
+---
+- name: Configure worker nodes
+  hosts: all
+  become: true
+
+  tasks:
+
+    - name: Install QEMU Guest Agent
+      ansible.builtin.dnf:
+        name: qemu-guest-agent
+        state: present
+
+    - name: Enable and start QEMU Guest Agent
+      ansible.builtin.systemd:
+        name: qemu-guest-agent
+        enabled: true
+        state: started

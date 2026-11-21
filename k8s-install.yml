@@ -1,0 +1,137 @@
+---
+- name: Kubernetes Prerequisites and Installation
+  hosts: k8s_nodes:k8s_workers:k8s_storage
+#  hosts: new_vm
+  become: yes
+
+  vars:
+    k8s_version: "1.37"
+
+  tasks:
+
+    # --- Kernel Modules ---
+    - name: Load kernel modules
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Persist kernel modules
+      copy:
+        dest: /etc/modules-load.d/k8s.conf
+        content: |
+          overlay
+          br_netfilter
+
+    # --- sysctl ---
+    - name: Set sysctl for K8s networking
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.d/k8s.conf
+        reload: yes
+      loop:
+        - { key: "net.bridge.bridge-nf-call-iptables",  value: "1" }
+        - { key: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+        - { key: "net.ipv4.ip_forward",                 value: "1" }
+        - { key: "net.ipv4.conf.all.rp_filter",         value: "2" }
+        - { key: "net.ipv4.conf.default.rp_filter",     value: "2" }
+    # --- containerd ---
+    - name: Add Docker CE repository
+      command:
+        cmd: dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+        creates: /etc/yum.repos.d/docker-ce.repo
+
+    - name: Install containerd
+      dnf:
+        name: containerd.io
+        state: present
+
+    - name: Create containerd config directory
+      file:
+        path: /etc/containerd
+        state: directory
+
+    - name: Remove existing containerd config
+      file:
+        path: /etc/containerd/config.toml
+        state: absent
+
+    - name: Generate full containerd config
+      shell: containerd config default > /etc/containerd/config.toml
+
+    - name: Enable SystemdCgroup in containerd
+      replace:
+        path: /etc/containerd/config.toml
+        regexp: 'SystemdCgroup = false'
+        replace: 'SystemdCgroup = true'
+
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        enabled: yes
+        state: restarted
+
+    # --- Kubernetes repo ---
+    - name: Add Kubernetes repo
+      copy:
+        dest: /etc/yum.repos.d/kubernetes.repo
+        content: |
+          [kubernetes]
+          name=Kubernetes
+          baseurl=https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/
+          enabled=1
+          gpgcheck=1
+          gpgkey=https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/repodata/repomd.xml.key
+
+    # --- Install K8s components ---
+    - name: Install kubeadm kubelet kubectl
+      dnf:
+        name:
+          - kubeadm
+          - kubelet
+          - kubectl
+        state: present
+
+    - name: Hold K8s packages
+      shell: dnf mark install kubeadm kubelet kubectl
+      changed_when: false
+
+    - name: Enable kubelet
+      systemd:
+        name: kubelet
+        enabled: yes
+        state: started
+
+    # --- SELinux permissive for K8s ---
+    - name: Set SELinux to permissive
+      selinux:
+        policy: targeted
+        state: permissive
+
+    - name: Persist SELinux permissive
+      replace:
+        path: /etc/selinux/config
+        regexp: '^SELINUX=enforcing'
+        replace: 'SELINUX=permissive'
+
+    - name: Done
+      debug:
+        msg: "K8s prerequisites installed on {{ inventory_hostname }}. Run kubeadm init on control plane next."
+
+- name: Install etcdctl on control plane nodes
+  hosts: k8s_nodes
+  become: true
+  tasks:
+    - name: Install etcdctl
+      shell: |
+        ETCD_VER=v3.5.21
+        curl -L https://github.com/etcd-io/etcd/releases/download/${ETCD_VER}/etcd-${ETCD_VER}-linux-amd64.tar.gz -o /tmp/etcd.tar.gz
+        tar xzf /tmp/etcd.tar.gz -C /tmp/
+        cp /tmp/etcd-${ETCD_VER}-linux-amd64/etcdctl /usr/local/bin/
+        chmod +x /usr/local/bin/etcdctl
+        rm -rf /tmp/etcd*
+      args:
+        creates: /usr/local/bin/etcdctl

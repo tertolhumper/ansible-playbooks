@@ -1,0 +1,29 @@
+---
+- name: Patch Management with Reboot Handling
+  hosts: all
+  become: true
+
+  tasks:
+
+    - name: Update all packages
+      ansible.builtin.dnf:
+        name: '*'
+        state: latest
+        update_cache: true
+        exclude: "{{ dnf_exclude | default([]) }}"
+
+    - name: Check if reboot is required
+      ansible.builtin.command: needs-restarting -r
+      register: reboot_required_rhel
+      failed_when: false
+      changed_when: false
+
+    - name: Reboot if required
+      ansible.builtin.reboot:
+        msg: "Rebooting after package updates"
+        reboot_timeout: 300
+      when: reboot_required_rhel.rc == 1
+
+    - name: Show upgraded packages
+      ansible.builtin.command: dnf history info last
+      changed_when: false

@@ -1,0 +1,76 @@
+---
+- name: Deploy Sentinel NSM site to K8s LEMP
+  hosts: localhost
+  connection: local
+  become: false
+
+  vars:
+    lemp_ns: lemp
+    php_src: "{{ playbook_dir }}/files/index.php"
+
+  environment:
+    KUBECONFIG: /home/tertol/.kube/config
+
+  tasks:
+    - name: Check index.php exists
+      ansible.builtin.stat:
+        path: "{{ php_src }}"
+      register: php_stat
+      failed_when: not php_stat.stat.exists
+
+    - name: Get current ConfigMap checksum
+      ansible.builtin.command:
+        cmd: kubectl get configmap php-app -n {{ lemp_ns }} -o jsonpath='{.data.index\.php}' 
+      register: current_cm
+      failed_when: false
+      changed_when: false
+
+    - name: Get new file checksum
+      ansible.builtin.stat:
+        path: "{{ php_src }}"
+        checksum_algorithm: sha256
+      register: new_file
+
+    - name: Apply php-app ConfigMap
+      ansible.builtin.shell:
+        cmd: >
+          kubectl create configmap php-app
+          --from-file=index.php={{ php_src }}
+          -n {{ lemp_ns }}
+          --dry-run=client -o yaml | kubectl apply -f -
+      register: cm_apply
+      changed_when: "'configured' in cm_apply.stdout or 'created' in cm_apply.stdout"
+
+    - name: Restart nginx if ConfigMap changed
+      ansible.builtin.command:
+        cmd: kubectl rollout restart deployment/nginx -n {{ lemp_ns }}
+      when: cm_apply.changed
+      changed_when: true
+
+    - name: Restart php-fpm if ConfigMap changed
+      ansible.builtin.command:
+        cmd: kubectl rollout restart deployment/php-fpm -n {{ lemp_ns }}
+      when: cm_apply.changed
+      changed_when: true
+
+    - name: Wait for nginx rollout
+      ansible.builtin.command:
+        cmd: kubectl rollout status deployment/nginx -n {{ lemp_ns }} --timeout=120s
+      when: cm_apply.changed
+      changed_when: false
+
+    - name: Wait for php-fpm rollout
+      ansible.builtin.command:
+        cmd: kubectl rollout status deployment/php-fpm -n {{ lemp_ns }} --timeout=120s
+      when: cm_apply.changed
+      changed_when: false
+
+    - name: Verify pods
+      ansible.builtin.command:
+        cmd: kubectl get pods -n {{ lemp_ns }}
+      register: pods_out
+      changed_when: false
+
+    - name: Show pods
+      ansible.builtin.debug:
+        msg: "{{ pods_out.stdout_lines }}"

@@ -1,0 +1,182 @@
+---
+- name: Install and Configure Keepalived for K8s HA VIP
+  hosts: k8s_nodes
+  become: yes
+
+  vars:
+    vip: "192.168.100.20"
+    interface: "ens18"
+    virtual_router_id: 51
+    auth_pass: "B0g@rtK8s"
+    haproxy_port: 8443
+
+  tasks:
+
+    - name: Install keepalived
+      dnf:
+        name: keepalived
+        state: present
+
+    - name: Allow keepalived to bind non-local IP (sysctl)
+      sysctl:
+        name: net.ipv4.ip_nonlocal_bind
+        value: "1"
+        sysctl_file: /etc/sysctl.d/keepalived.conf
+        reload: yes
+
+    - name: Open VRRP protocol in firewalld
+      firewalld:
+        protocol: vrrp
+        permanent: yes
+        state: enabled
+      notify: Reload firewalld
+
+    - name: Deploy keepalived config on node1 (MASTER)
+      copy:
+        dest: /etc/keepalived/keepalived.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          global_defs {
+              router_id LVS_K8S_MASTER
+              script_user root
+              enable_script_security
+          }
+
+          vrrp_script check_haproxy {
+              script "/bin/bash -c 'kill -0 $(cat /var/run/haproxy.pid)'"
+              interval 2
+              weight -2
+              fall 3
+              rise 2
+          }
+
+          vrrp_instance VI_1 {
+              state MASTER
+              interface {{ interface }}
+              virtual_router_id {{ virtual_router_id }}
+              priority 101
+              advert_int 1
+              authentication {
+                  auth_type PASS
+                  auth_pass {{ auth_pass }}
+              }
+              virtual_ipaddress {
+                  {{ vip }}/24
+              }
+              track_script {
+                  check_haproxy
+              }
+          }
+      when: inventory_hostname == "rhel-node1"
+      notify: Restart keepalived
+
+    - name: Deploy keepalived config on node2 (BACKUP)
+      copy:
+        dest: /etc/keepalived/keepalived.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          global_defs {
+              router_id LVS_K8S_BACKUP2
+              script_user root
+              enable_script_security
+          }
+
+          vrrp_script check_haproxy {
+              script "/bin/bash -c 'kill -0 $(cat /var/run/haproxy.pid)'"
+              interval 2
+              weight -2
+              fall 3
+              rise 2
+          }
+
+          vrrp_instance VI_1 {
+              state BACKUP
+              interface {{ interface }}
+              virtual_router_id {{ virtual_router_id }}
+              priority 100
+              advert_int 1
+              authentication {
+                  auth_type PASS
+                  auth_pass {{ auth_pass }}
+              }
+              virtual_ipaddress {
+                  {{ vip }}/24
+              }
+              track_script {
+                  check_haproxy
+              }
+          }
+      when: inventory_hostname == "rhel-node2"
+      notify: Restart keepalived
+
+    - name: Deploy keepalived config on node3 (BACKUP)
+      copy:
+        dest: /etc/keepalived/keepalived.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          global_defs {
+              router_id LVS_K8S_BACKUP3
+              script_user root
+              enable_script_security
+          }
+
+          vrrp_script check_haproxy {
+              script "/bin/bash -c 'kill -0 $(cat /var/run/haproxy.pid)'"
+              interval 2
+              weight -2
+              fall 3
+              rise 2
+          }
+
+          vrrp_instance VI_1 {
+              state BACKUP
+              interface {{ interface }}
+              virtual_router_id {{ virtual_router_id }}
+              priority 99
+              advert_int 1
+              authentication {
+                  auth_type PASS
+                  auth_pass {{ auth_pass }}
+              }
+              virtual_ipaddress {
+                  {{ vip }}/24
+              }
+              track_script {
+                  check_haproxy
+              }
+          }
+      when: inventory_hostname == "rhel-node3"
+      notify: Restart keepalived
+
+    - name: Enable and start keepalived
+      systemd:
+        name: keepalived
+        enabled: yes
+        state: started
+
+    - name: Verify VIP is assigned on master
+      command: ip addr show {{ interface }}
+      register: ip_output
+      changed_when: false
+
+    - name: Show VIP status
+      debug:
+        msg: "{{ ip_output.stdout_lines | select('search', vip) | list }}"
+
+  handlers:
+
+    - name: Restart keepalived
+      systemd:
+        name: keepalived
+        state: restarted
+
+    - name: Reload firewalld
+      service:
+        name: firewalld
+        state: reloaded

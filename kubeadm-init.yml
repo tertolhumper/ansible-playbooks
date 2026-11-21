@@ -1,0 +1,115 @@
+---
+- name: Initialize Kubernetes Control Plane on node1
+  hosts: rhel-node1
+  become: yes
+
+  vars:
+    vip: "192.168.100.20"
+    haproxy_port: 8443
+    pod_network_cidr: "10.244.0.0/16"
+    kubeadm_config: /etc/kubernetes/kubeadm-config.yaml
+    join_command_file: /tmp/kubeadm_join.sh
+    control_join_command_file: /tmp/kubeadm_join_control.sh
+
+  tasks:
+
+    - name: Check if cluster already initialized
+      stat:
+        path: /etc/kubernetes/admin.conf
+      register: kubeadm_initialized
+
+    - name: Deploy kubeadm config
+      copy:
+        dest: "{{ kubeadm_config }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          ---
+          apiVersion: kubeadm.k8s.io/v1beta4
+          kind: ClusterConfiguration
+          kubernetesVersion: stable
+          controlPlaneEndpoint: "{{ vip }}:{{ haproxy_port }}"
+          networking:
+            podSubnet: "{{ pod_network_cidr }}"
+          ---
+          apiVersion: kubeadm.k8s.io/v1beta4
+          kind: InitConfiguration
+          localAPIEndpoint:
+            advertiseAddress: "192.168.100.11"
+            bindPort: 6443
+      when: not kubeadm_initialized.stat.exists
+
+    - name: Initialize Kubernetes cluster
+      shell: kubeadm init --config {{ kubeadm_config }} --upload-certs 2>&1
+      register: kubeadm_output
+      when: not kubeadm_initialized.stat.exists
+      timeout: 300
+
+    - name: Show kubeadm output
+      debug:
+        msg: "{{ kubeadm_output.stdout_lines }}"
+      when: not kubeadm_initialized.stat.exists
+
+    - name: Create .kube directory for tertol
+      file:
+        path: /home/tertol/.kube
+        state: directory
+        owner: tertol
+        group: tertol
+        mode: '0700'
+
+    - name: Copy admin.conf to tertol home
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/tertol/.kube/config
+        remote_src: yes
+        owner: tertol
+        group: tertol
+        mode: '0600'
+
+    - name: Extract worker join command
+      shell: kubeadm token create --print-join-command
+      register: worker_join_command
+      changed_when: false
+
+    - name: Extract control plane join command
+      shell: |
+        CERT_KEY=$(kubeadm init phase upload-certs --upload-certs 2>/dev/null | tail -1)
+        echo "$(kubeadm token create --print-join-command) --control-plane --certificate-key ${CERT_KEY}"
+      register: control_join_command
+      changed_when: false
+ 
+    - name: Save worker join command locally
+      copy:
+        content: "{{ worker_join_command.stdout }}"
+        dest: "{{ join_command_file }}"
+      delegate_to: localhost
+      become: no
+
+    - name: Save control plane join command locally
+      copy:
+        content: "{{ control_join_command.stdout }}"
+        dest: "{{ control_join_command_file }}"
+      delegate_to: localhost
+      become: no
+
+
+    - name: Show join commands
+      debug:
+        msg:
+          - "Worker join: {{ worker_join_command.stdout }}"
+          - "Control join: {{ control_join_command.stdout }}"
+
+    - name: Verify cluster is running
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/tertol/.kube/config
+      register: nodes_output
+      changed_when: false
+      become: no
+      become_user: tertol
+
+    - name: Show cluster nodes
+      debug:
+        msg: "{{ nodes_output.stdout_lines }}"

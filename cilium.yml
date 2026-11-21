@@ -1,0 +1,96 @@
+---
+- name: Install Cilium CNI with Hubble via Helm
+  hosts: rhel-node1
+  become: no
+
+  vars:
+    cilium_version: "1.17.3"
+    pod_network_cidr: "10.244.0.0/16"
+    kubeconfig: /home/tertol/.kube/config
+
+  tasks:
+
+    - name: Check if Cilium is already installed
+      shell: helm status cilium -n kube-system 2>/dev/null | grep -i status
+      register: cilium_status
+      changed_when: false
+      failed_when: false
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+
+    - name: Install Cilium via Helm
+      shell: |
+        helm install cilium cilium/cilium \
+          --version {{ cilium_version }} \
+          --namespace kube-system \
+          --set ipam.mode=cluster-pool \
+          --set ipam.operator.clusterPoolIPv4PodCIDRList="{{ pod_network_cidr }}" \
+          --set ipv4NativeRoutingCIDR="{{ pod_network_cidr }}" \
+          --set enableIPv4Masquerade=true \
+          --set routingMode=tunnel \
+          --set hubble.relay.enabled=true \
+          --set hubble.ui.enabled=true \
+          --set hubble.enabled=true
+      when: "'deployed' not in (cilium_status.stdout | lower)"
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: cilium_install
+
+    - name: Show Cilium install output
+      debug:
+        msg: "{{ cilium_install.stdout_lines }}"
+      when: cilium_install is changed
+
+    - name: Wait for Cilium pods to be ready
+      shell: kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: cilium_ready
+      changed_when: false
+
+    - name: Wait for Hubble relay to be ready
+      shell: kubectl rollout status deployment/hubble-relay -n kube-system --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: hubble_ready
+      changed_when: false
+
+    - name: Wait for Hubble UI to be ready
+      shell: kubectl rollout status deployment/hubble-ui -n kube-system --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: hubble_ui_ready
+      changed_when: false
+
+    - name: Get cluster nodes status
+      shell: kubectl get nodes -o wide
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: nodes_output
+      changed_when: false
+
+    - name: Show nodes
+      debug:
+        msg: "{{ nodes_output.stdout_lines }}"
+
+    - name: Get Cilium pods status
+      shell: kubectl get pods -n kube-system -l app.kubernetes.io/name=cilium
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: cilium_pods
+      changed_when: false
+
+    - name: Show Cilium pods
+      debug:
+        msg: "{{ cilium_pods.stdout_lines }}"
+
+    - name: Get Hubble pods status
+      shell: kubectl get pods -n kube-system | grep hubble
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: hubble_pods
+      changed_when: false
+
+    - name: Show Hubble pods
+      debug:
+        msg: "{{ hubble_pods.stdout_lines }}"

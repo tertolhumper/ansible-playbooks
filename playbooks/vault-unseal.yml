@@ -1,0 +1,49 @@
+---
+- name: Vault Unseal
+  hosts: localhost
+  become: false
+  vars_files:
+    - ~/ansible-proxmox/vault-keys.yml
+  tasks:
+    - name: Check if Vault is sealed
+      command: kubectl exec -n vault vault-0 -- vault status -format=json
+      register: vault_status
+      changed_when: false
+      ignore_errors: true
+      failed_when: vault_status.rc not in [0, 1, 2]
+
+    - name: Unseal vault-0
+      command: kubectl exec -n vault vault-0 -- vault operator unseal {{ item }}
+      loop:
+        - "{{ vault_unseal_key1 }}"
+        - "{{ vault_unseal_key2 }}"
+        - "{{ vault_unseal_key3 }}"
+      when: (vault_status.stdout | from_json).sealed | default(true)
+      no_log: true
+
+    - name: Unseal vault-1
+      command: kubectl exec -n vault vault-1 -- vault operator unseal {{ item }}
+      loop:
+        - "{{ vault_unseal_key1 }}"
+        - "{{ vault_unseal_key2 }}"
+        - "{{ vault_unseal_key3 }}"
+      when: (vault_status.stdout | from_json).sealed | default(true)
+      no_log: true
+
+    - name: Unseal vault-2
+      command: kubectl exec -n vault vault-2 -- vault operator unseal {{ item }}
+      loop:
+        - "{{ vault_unseal_key1 }}"
+        - "{{ vault_unseal_key2 }}"
+        - "{{ vault_unseal_key3 }}"
+      when: (vault_status.stdout | from_json).sealed | default(true)
+      no_log: true
+
+    - name: Verify Vault is unsealed
+      command: kubectl exec -n vault vault-0 -- vault status
+      register: final_status
+      changed_when: false
+
+    - name: Show Vault status
+      debug:
+        msg: "{{ final_status.stdout_lines }}"

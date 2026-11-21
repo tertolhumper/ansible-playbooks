@@ -1,0 +1,167 @@
+---
+- name: etcd Backup
+  hosts: rhel-node1
+  become: true
+  gather_facts: true
+
+  vars:
+    etcd_endpoints: "https://127.0.0.1:2379"
+    etcd_cacert: "/etc/kubernetes/pki/etcd/ca.crt"
+    etcd_cert: "/etc/kubernetes/pki/etcd/healthcheck-client.crt"
+    etcd_key: "/etc/kubernetes/pki/etcd/healthcheck-client.key"
+    remote_tmp_dir: "/tmp"
+    local_backup_dir: "/mnt/backup/etcd"
+    backup_filename: "etcd-snapshot-{{ ansible_date_time.date }}.db"
+    backup_filepath: "{{ remote_tmp_dir }}/{{ backup_filename }}"
+
+  tasks:
+
+    - name: Ensure local backup directory exists
+      ansible.builtin.file:
+        path: "{{ local_backup_dir }}"
+        state: directory
+        mode: "0750"
+      delegate_to: localhost
+      become: true
+
+    - name: Check whether snapshot already exists on Proxmox
+      ansible.builtin.stat:
+        path: "{{ local_backup_dir }}/{{ backup_filename }}"
+      register: local_snapshot
+      delegate_to: localhost
+      become: true
+
+    - name: Check whether snapshot already exists on node
+      ansible.builtin.stat:
+        path: "{{ backup_filepath }}"
+      register: snapshot_existing
+      when: not local_snapshot.stat.exists
+
+    - name: Take etcd snapshot
+      ansible.builtin.shell: |
+        ETCDCTL_API=3 /usr/local/bin/etcdctl \
+          --endpoints="{{ etcd_endpoints }}" \
+          --cacert="{{ etcd_cacert }}" \
+          --cert="{{ etcd_cert }}" \
+          --key="{{ etcd_key }}" \
+          snapshot save "{{ backup_filepath }}"
+      args:
+        creates: "{{ backup_filepath }}"
+      when:
+        - not local_snapshot.stat.exists
+        - not (snapshot_existing.stat.exists | default(false))
+
+    - name: Verify snapshot file exists on node
+      ansible.builtin.stat:
+        path: "{{ backup_filepath }}"
+      register: snapshot_file
+      when: not local_snapshot.stat.exists
+
+    - name: Verify snapshot is not empty
+      ansible.builtin.assert:
+        that:
+          - snapshot_file.stat.exists
+          - snapshot_file.stat.size | int > 0
+        fail_msg: "etcd snapshot is missing or empty: {{ backup_filepath }}"
+        success_msg: "etcd snapshot exists: {{ backup_filepath }} ({{ snapshot_file.stat.size }} bytes)"
+      when: not local_snapshot.stat.exists
+
+    - name: Fetch snapshot to Proxmox
+      ansible.builtin.fetch:
+        src: "{{ backup_filepath }}"
+        dest: "{{ local_backup_dir }}/{{ backup_filename }}"
+        flat: true
+      when: not local_snapshot.stat.exists
+
+    - name: Verify fetched snapshot on Proxmox
+      ansible.builtin.stat:
+        path: "{{ local_backup_dir }}/{{ backup_filename }}"
+      register: fetched_snapshot
+      delegate_to: localhost
+      become: true
+
+    - name: Verify fetched snapshot is not empty
+      ansible.builtin.assert:
+        that:
+          - fetched_snapshot.stat.exists
+          - fetched_snapshot.stat.size | int > 0
+        fail_msg: "Fetched etcd snapshot is missing or empty: {{ local_backup_dir }}/{{ backup_filename }}"
+        success_msg: "Fetched etcd snapshot verified: {{ local_backup_dir }}/{{ backup_filename }} ({{ fetched_snapshot.stat.size }} bytes)"
+      delegate_to: localhost
+      become: true
+
+    - name: Verify fetched snapshot size matches source
+      ansible.builtin.assert:
+        that:
+          - fetched_snapshot.stat.size | int == snapshot_file.stat.size | int
+        fail_msg: "Snapshot size mismatch. Source: {{ snapshot_file.stat.size }} bytes. Proxmox: {{ fetched_snapshot.stat.size }} bytes."
+        success_msg: "Snapshot size matches: {{ fetched_snapshot.stat.size }} bytes"
+      delegate_to: localhost
+      become: true
+      when:
+        - not local_snapshot.stat.exists
+        - snapshot_file is defined
+        - snapshot_file.stat is defined
+
+    - name: Validate fetched snapshot with etcdutl
+      ansible.builtin.command:
+        argv:
+          - etcdutl
+          - snapshot
+          - status
+          - "{{ local_backup_dir }}/{{ backup_filename }}"
+          - --write-out=table
+      register: etcd_snapshot_status
+      changed_when: false
+      delegate_to: localhost
+      become: true
+
+    - name: Show snapshot status
+      ansible.builtin.debug:
+        msg: "{{ etcd_snapshot_status.stdout_lines }}"
+
+    - name: Remove temporary snapshot from node
+      ansible.builtin.file:
+        path: "{{ backup_filepath }}"
+        state: absent
+
+- name: Cleanup old backups on Proxmox
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+
+  vars:
+    local_backup_dir: "/mnt/backup/etcd"
+    keep_count: 7
+
+  tasks:
+
+    - name: Ensure backup directory exists
+      ansible.builtin.file:
+        path: "{{ local_backup_dir }}"
+        state: directory
+        mode: "0750"
+
+    - name: Find existing backups
+      ansible.builtin.find:
+        paths: "{{ local_backup_dir }}"
+        patterns:
+          - "etcd-snapshot-*.db"
+        file_type: file
+      register: found_backups
+
+    - name: Sort backups by modification time
+      ansible.builtin.set_fact:
+        sorted_backups: >-
+          {{
+            found_backups.files
+            | sort(attribute='mtime', reverse=true)
+          }}
+
+    - name: Remove backups exceeding retention count
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ sorted_backups[keep_count:] }}"
+      when: found_backups.files | length > keep_count

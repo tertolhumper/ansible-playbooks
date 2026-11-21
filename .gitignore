@@ -1,0 +1,5 @@
+logs/
+*.log
+*.bak
+linux-amd64/
+notes/

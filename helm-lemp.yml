@@ -1,0 +1,269 @@
+---
+- name: Deploy LEMP Stack via Helm on Kubernetes
+  hosts: rhel-node1
+  become: no
+
+  vars:
+    kubeconfig: /home/tertol/.kube/config
+    lemp_namespace: lemp
+    mariadb_root_password: "CHANGE_ME_ROOT"
+    mariadb_database: "calmapps"
+    mariadb_user: "calmapps"
+    mariadb_password: "CHANGE_ME_APP"
+
+  tasks:
+
+    - name: Create lemp namespace
+      shell: kubectl get namespace {{ lemp_namespace }} 2>/dev/null || kubectl create namespace {{ lemp_namespace }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Add Bitnami helm repo
+      shell: helm repo add bitnami https://charts.bitnami.com/bitnami
+      register: bitnami_repo
+      changed_when: "'already exists' not in bitnami_repo.stdout"
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+
+    - name: Update helm repos
+      shell: helm repo update
+      changed_when: false
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+
+    # --- MariaDB ---
+    - name: Check if MariaDB is already installed
+      shell: helm status mariadb -n {{ lemp_namespace }} 2>/dev/null | grep -i status || echo "not installed"
+      register: mariadb_status
+      changed_when: false
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+
+    - name: Install MariaDB via Helm
+      shell: |
+        helm install mariadb bitnami/mariadb \
+          --namespace {{ lemp_namespace }} \
+          --set auth.rootPassword="{{ mariadb_root_password }}" \
+          --set auth.database="{{ mariadb_database }}" \
+          --set auth.username="{{ mariadb_user }}" \
+          --set auth.password="{{ mariadb_password }}" \
+          --set primary.persistence.enabled=false
+      when: "'deployed' not in (mariadb_status.stdout | lower)"
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+
+    - name: Wait for MariaDB to be ready
+      shell: kubectl rollout status statefulset/mariadb -n {{ lemp_namespace }} --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    # --- nginx + PHP ConfigMap ---
+    - name: Deploy nginx config ConfigMap
+      shell: |
+        kubectl apply -f - <<'YAML'
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: nginx-config
+          namespace: {{ lemp_namespace }}
+        data:
+          default.conf: |
+            server {
+                listen 80;
+                root /var/www/html;
+                index index.php index.html;
+
+                location / {
+                    try_files $uri $uri/ /index.php?$args;
+                }
+
+                location ~ \.php$ {
+                    fastcgi_pass php-fpm:9000;
+                    fastcgi_index index.php;
+                    include fastcgi_params;
+                    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                }
+            }
+        YAML
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    # --- PHP App ConfigMap ---
+    - name: Deploy PHP app ConfigMap
+      shell: |
+        kubectl apply -f - <<'YAML'
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: php-app
+          namespace: {{ lemp_namespace }}
+        data:
+          index.php: |
+            <?php
+            $host = 'mariadb';
+            $db   = '{{ mariadb_database }}';
+            $user = '{{ mariadb_user }}';
+            $pass = '{{ mariadb_password }}';
+            $conn = new mysqli($host, $user, $pass, $db);
+            $status = $conn->connect_error ? 'DB: Offline' : 'DB: Online';
+            ?>
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Calm Apps PH</title>
+              <style>
+                body { font-family: sans-serif; text-align: center; padding: 100px; background: #f5f5f5; }
+                h1 { color: #2c3e50; }
+                h2 { color: #7f8c8d; }
+                p { color: #34495e; }
+                .status { margin-top: 40px; font-size: 12px; color: #95a5a6; }
+              </style>
+            </head>
+            <body>
+              <h1>Calm Apps PH</h1>
+              <h2>Coming Soon</h2>
+              <p>Tranquility &mdash; Block distractions, find focus.</p>
+              <div class="status"><?= $status ?></div>
+            </body>
+            </html>
+        YAML
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    # --- PHP-FPM Deployment ---
+    - name: Deploy PHP-FPM
+      shell: |
+        kubectl apply -f - <<'YAML'
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: php-fpm
+          namespace: {{ lemp_namespace }}
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: php-fpm
+          template:
+            metadata:
+              labels:
+                app: php-fpm
+            spec:
+              containers:
+              - name: php-fpm
+                image: php:8.3-fpm
+                command: ["sh", "-c", "docker-php-ext-install mysqli pdo_mysql && php-fpm"]
+                ports:
+                - containerPort: 9000
+                volumeMounts:
+                - name: php-app
+                  mountPath: /var/www/html
+              volumes:
+              - name: php-app
+                configMap:
+                  name: php-app
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: php-fpm
+          namespace: {{ lemp_namespace }}
+        spec:
+          selector:
+            app: php-fpm
+          ports:
+          - port: 9000
+            targetPort: 9000
+        YAML
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    # --- nginx Deployment ---
+    - name: Deploy nginx
+      shell: |
+        kubectl apply -f - <<'YAML'
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: nginx
+          namespace: {{ lemp_namespace }}
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: nginx
+          template:
+            metadata:
+              labels:
+                app: nginx
+            spec:
+              containers:
+              - name: nginx
+                image: nginx:latest
+                ports:
+                - containerPort: 80
+                volumeMounts:
+                - name: nginx-config
+                  mountPath: /etc/nginx/conf.d
+                - name: php-app
+                  mountPath: /var/www/html
+              volumes:
+              - name: nginx-config
+                configMap:
+                  name: nginx-config
+              - name: php-app
+                configMap:
+                  name: php-app
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: nginx
+          namespace: {{ lemp_namespace }}
+        spec:
+          type: NodePort
+          selector:
+            app: nginx
+          ports:
+          - port: 80
+            targetPort: 80
+            nodePort: 30080
+        YAML
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Wait for PHP-FPM to be ready
+      shell: kubectl rollout status deployment/php-fpm -n {{ lemp_namespace }} --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Wait for nginx to be ready
+      shell: kubectl rollout status deployment/nginx -n {{ lemp_namespace }} --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Get all pods in lemp namespace
+      shell: kubectl get pods -n {{ lemp_namespace }} -o wide
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: lemp_pods
+      changed_when: false
+
+    - name: Show LEMP pods
+      debug:
+        msg: "{{ lemp_pods.stdout_lines }}"
+
+    - name: Show access URL
+      debug:
+        msg:
+          - "Calm Apps PH is accessible at:"
+          - "http://192.168.100.14:30080"
+          - "http://192.168.100.15:30080"

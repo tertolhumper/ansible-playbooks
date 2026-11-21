@@ -1,0 +1,55 @@
+---
+- name: Clean known_hosts
+  hosts: localhost
+  tasks:
+    - name: Remove old SSH host key
+      command: ssh-keygen -f "{{ lookup('env', 'HOME') }}/.ssh/known_hosts" -R "{{ hostvars[item]['ansible_host'] }}"
+      loop: "{{ groups['new_vm'] }}"
+      ignore_errors: true
+
+- name: Initial VM Configuration
+  hosts: new_vm
+  become: true
+  tasks:
+    - name: Remove old machine-id
+      command: truncate -s 0 /etc/machine-id
+      args:
+        creates: /etc/machine-id.initialized
+
+    - name: Generate new machine-id
+      command: systemd-machine-id-setup
+      args:
+        creates: /etc/machine-id.initialized
+
+    - name: Mark machine-id as initialized
+      file:
+        path: /etc/machine-id.initialized
+        state: touch
+        modification_time: preserve
+        access_time: preserve
+
+    - name: Set hostname
+      hostname:
+        name: "{{ vm_hostname }}"
+
+    - name: Set static IP via nmcli
+      command: >
+        nmcli con mod ens18
+        ipv4.addresses "{{ ansible_host }}/24"
+        ipv4.gateway "192.168.100.1"
+        ipv4.dns "192.168.0.1"
+        ipv4.method manual
+      register: nmcli_result
+      changed_when: false
+
+    - name: Restart NetworkManager
+      service:
+        name: NetworkManager
+        state: restarted
+
+    - name: Regenerate SSH host keys
+      shell: |
+        rm -f /etc/ssh/ssh_host_*
+        ssh-keygen -A
+      args:
+        creates: /etc/ssh/ssh_host_ed25519_key

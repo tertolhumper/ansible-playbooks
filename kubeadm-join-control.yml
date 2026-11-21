@@ -1,0 +1,69 @@
+---
+- name: Join node2 and node3 as Control Plane nodes
+  hosts: rhel-node2,rhel-node3
+  become: yes
+  serial: 1
+
+  vars:
+    control_join_command_file: /tmp/kubeadm_join_control.sh
+
+  tasks:
+
+    - name: Check if already joined as control plane
+      stat:
+        path: /etc/kubernetes/admin.conf
+      register: already_joined
+
+    - name: Read control plane join command from Proxmox
+      slurp:
+        src: "{{ control_join_command_file }}"
+      register: join_command_raw
+      delegate_to: localhost
+      become: no
+      when: not already_joined.stat.exists
+
+    - name: Set join command fact
+      set_fact:
+        join_command: "{{ join_command_raw.content | b64decode | trim }}"
+      when: not already_joined.stat.exists
+
+    - name: Join cluster as control plane
+      shell: "{{ join_command }}"
+      register: join_output
+      when: not already_joined.stat.exists
+      timeout: 300
+
+    - name: Show join output
+      debug:
+        msg: "{{ join_output.stdout_lines }}"
+      when: not already_joined.stat.exists
+
+    - name: Create .kube directory for tertol
+      file:
+        path: /home/tertol/.kube
+        state: directory
+        owner: tertol
+        group: tertol
+        mode: '0700'
+
+    - name: Copy admin.conf to tertol home
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/tertol/.kube/config
+        remote_src: yes
+        owner: tertol
+        group: tertol
+        mode: '0600'
+
+    - name: Verify node joined
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /home/tertol/.kube/config
+      register: nodes_output
+      changed_when: false
+      become: no
+      become_user: tertol
+
+    - name: Show cluster nodes
+      debug:
+        msg: "{{ nodes_output.stdout_lines }}"

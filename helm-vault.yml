@@ -1,0 +1,67 @@
+---
+- name: Install HashiCorp Vault via Helm
+  hosts: localhost
+  connection: local
+  become: false
+
+  vars:
+    helm_bin: /usr/local/bin/helm
+    vault_ns: vault
+
+  environment:
+    KUBECONFIG: /home/tertol/.kube/config
+
+  tasks:
+    - name: Add HashiCorp Helm repo
+      ansible.builtin.command:
+        cmd: "{{ helm_bin }} repo add hashicorp https://helm.releases.hashicorp.com"
+      register: repo_add
+      failed_when: repo_add.rc != 0 and 'already exists' not in repo_add.stderr
+      changed_when: "'already exists' not in repo_add.stderr"
+
+    - name: Update Helm repos
+      ansible.builtin.command:
+        cmd: "{{ helm_bin }} repo update"
+      changed_when: false
+
+    - name: Create vault namespace
+      ansible.builtin.command:
+        cmd: kubectl create namespace {{ vault_ns }}
+      register: ns_result
+      failed_when: ns_result.rc != 0 and 'already exists' not in ns_result.stderr
+      changed_when: "'already exists' not in ns_result.stderr"
+
+    - name: Check if Vault already deployed
+      ansible.builtin.command:
+        cmd: "{{ helm_bin }} status vault -n {{ vault_ns }}"
+      register: helm_status
+      failed_when: false
+      changed_when: false
+
+    - name: Install Vault via Helm
+      ansible.builtin.command:
+        cmd: >
+          {{ helm_bin }} install vault hashicorp/vault
+          -n {{ vault_ns }}
+          --set server.ha.enabled=true
+          --set server.ha.replicas=3
+          --set server.ha.raft.enabled=true
+          --set server.ha.raft.setNodeId=true
+          --set server.dataStorage.enabled=true
+          --set server.dataStorage.storageClass=nfs-client
+          --set server.dataStorage.size=5Gi
+          --set server.dataStorage.accessMode=ReadWriteMany
+          --set ui.enabled=true
+          --set ui.serviceType=NodePort
+          --set ui.serviceNodePort=30200
+      when: helm_status.rc != 0
+
+    - name: Verify Vault pods
+      ansible.builtin.command:
+        cmd: kubectl get pods -n {{ vault_ns }}
+      register: pods_out
+      changed_when: false
+
+    - name: Show Vault pods
+      ansible.builtin.debug:
+        msg: "{{ pods_out.stdout_lines }}"
