@@ -1,0 +1,15 @@
+# Managed by Ansible - Do not edit manually
+Port {{ ssh_port }}
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+X11Forwarding no
+AllowTcpForwarding no
+ClientAliveInterval 300
+ClientAliveCountMax 2
+MaxAuthTries 3
+MaxSessions 4
+LogLevel VERBOSE
+Banner /etc/issue.net
+AllowUsers {{ ansible_user }} sysadmin

@@ -1,0 +1,31 @@
+---
+- name: Remove nginx
+  hosts: all
+  become: true
+  tasks:
+    - name: Stop and disable nginx
+      ansible.builtin.service:
+        name: nginx
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Remove nginx (Arch)
+      community.general.pacman:
+        name: nginx
+        state: absent
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Remove nginx (RHEL)
+      ansible.builtin.dnf:
+        name: nginx
+        state: absent
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Remove firewalld http rule (RHEL)
+      ansible.posix.firewalld:
+        service: http
+        permanent: true
+        state: disabled
+        immediate: true
+      when: ansible_facts['os_family'] == "RedHat"

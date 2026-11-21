@@ -1,0 +1,32 @@
+---
+- name: Certificate Rotation with Let's Encrypt
+  hosts: rhel
+  become: true
+  vars:
+    domain: bogartlinux.duckdns.org
+    cert_path: /etc/letsencrypt/live/{{ domain }}
+    duckdns_credentials: /etc/letsencrypt/duckdns.ini
+
+  tasks:
+
+    - name: Check certificate expiry
+      ansible.builtin.command:
+        cmd: openssl x509 -enddate -noout -in {{ cert_path }}/fullchain.pem
+      register: cert_expiry
+      changed_when: false
+
+    - name: Show certificate expiry
+      ansible.builtin.debug:
+        msg: "Certificate expires: {{ cert_expiry.stdout }}"
+
+    - name: Renew certificate if expiring within 30 days
+      ansible.builtin.command:
+        cmd: /usr/local/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx"
+      register: certbot_renew
+      changed_when: "'Congratulations' in certbot_renew.stdout"
+
+    - name: Reload nginx after renewal
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+      when: certbot_renew.changed

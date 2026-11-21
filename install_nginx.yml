@@ -1,0 +1,30 @@
+---
+- name: Install nginx
+  hosts: all
+  become: true
+  tasks:
+    - name: Install nginx (Arch)
+      community.general.pacman:
+        name: nginx
+        state: latest
+      when: ansible_facts['os_family'] == "Archlinux"
+
+    - name: Install nginx (RHEL)
+      ansible.builtin.dnf:
+        name: nginx
+        state: latest
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Allow http through firewalld (RHEL)
+      ansible.posix.firewalld:
+        service: http
+        permanent: true
+        state: enabled
+        immediate: true
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: Enable and start nginx
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true

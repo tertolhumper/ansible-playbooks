@@ -1,0 +1,39 @@
+============================================================
+COMPLIANCE REPORT - arch_vm
+Generated: 2026-07-30T03:35:13Z
+OS: Archlinux NA
+Kernel: 7.1.5-arch1-1
+Uptime: 1 hours
+============================================================
+FAILED SYSTEMD UNITS:
+● filebeat.service loaded failed failed Filebeat sends log files to Logstash or directly to Elasticsearch.
+============================================================
+LISTENING PORTS:
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess
+LISTEN 0      0            0.0.0.0:1515       0.0.0.0:*    users:(("wazuh-authd",pid=991,fd=6))
+LISTEN 0      0            0.0.0.0:1514       0.0.0.0:*    users:(("wazuh-remoted",pid=1190,fd=4))
+LISTEN 0      0            0.0.0.0:443        0.0.0.0:*    users:(("node",pid=553,fd=19))
+LISTEN 0      0            0.0.0.0:55000      0.0.0.0:*    users:(("python3",pid=936,fd=44))
+LISTEN 0      0            0.0.0.0:7001       0.0.0.0:*    users:(("sshd",pid=4071,fd=6))
+LISTEN 0      0                  *:9300             *:*    users:(("java",pid=672,fd=628))
+LISTEN 0      0                  *:9200             *:*    users:(("java",pid=672,fd=631))
+LISTEN 0      0                  *:55000            *:*    users:(("python3",pid=936,fd=46))
+LISTEN 0      0                  *:7001             *:*    users:(("sshd",pid=4071,fd=7))
+============================================================
+SUDOERS FILES:
+/etc/sudoers.d/sysadmin
+============================================================
+LAST LOGINS:
+tertol   pts/1        192.168.100.1    Thu Jul 30 11:35   still logged in
+tertol   pts/1        192.168.100.1    Thu Jul 30 11:35 - 11:35  (00:00)
+tertol   pts/1        192.168.100.1    Thu Jul 30 11:35 - 11:35  (00:00)
+tertol   pts/1        192.168.100.1    Thu Jul 30 11:35 - 11:35  (00:00)
+tertol   pts/1        192.168.100.1    Thu Jul 30 11:35 - 11:35  (00:00)
+tertol   pts/1        192.168.100.1    Thu Jul 30 11:35 - 11:35  (00:00)
+tertol   pts/1        192.168.100.1    Thu Jul 30 11:35 - 11:35  (00:00)
+tertol   pts/1        192.168.100.1    Thu Jul 30 11:27 - 11:27  (00:00)
+tertol   pts/1        192.168.100.1    Thu Jul 30 11:27 - 11:27  (00:00)
+tertol   pts/1        192.168.100.1    Thu Jul 30 11:27 - 11:27  (00:00)
+
+wtmp begins Tue Jun 30 20:50:42 2026
+============================================================
