@@ -11,7 +11,7 @@
     etcd_key: "/etc/kubernetes/pki/etcd/healthcheck-client.key"
     remote_tmp_dir: "/tmp"
     local_backup_dir: "/mnt/backup/etcd"
-    backup_filename: "etcd-snapshot-{{ ansible_date_time.date }}.db"
+    backup_filename: "etcd-snapshot-{{ lookup('pipe', 'date +%Y-%m-%d') }}.db"
     backup_filepath: "{{ remote_tmp_dir }}/{{ backup_filename }}"
 
   tasks:
