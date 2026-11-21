@@ -34,7 +34,7 @@ Ansible playbooks for Sentinel NSM Kubernetes cluster bootstrap and infrastructu
 | Playbook | Description |
 |---|---|
 | initial-config.yml | Base OS configuration for all nodes |
-| k8s-prereqs.yml | Kubernetes prerequisites (sysctl, modules) |
+| k8s-prereqs.yml | Kubernetes prerequisites (firewall ports) |
 | k8s-install.yml | Install containerd, kubeadm, kubelet, kubectl |
 | kubeadm-init.yml | Initialize control plane via kubeadm |
 | kubeadm-join-control.yml | Join additional control plane nodes |
