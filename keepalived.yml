@@ -4,7 +4,7 @@
   become: yes
 
   vars:
-    vip: "192.168.100.20"
+    vip: "10.0.10.20"
     interface: "ens18"
     virtual_router_id: 51
     auth_pass: "B0g@rtK8s"
@@ -45,9 +45,9 @@
           }
 
           vrrp_script check_haproxy {
-              script "/bin/bash -c 'kill -0 $(cat /var/run/haproxy.pid)'"
+              script "/usr/bin/pgrep haproxy"
               interval 2
-              weight -2
+              weight 0
               fall 3
               rise 2
           }
@@ -86,9 +86,9 @@
           }
 
           vrrp_script check_haproxy {
-              script "/bin/bash -c 'kill -0 $(cat /var/run/haproxy.pid)'"
+              script "/usr/bin/pgrep haproxy"
               interval 2
-              weight -2
+              weight 0
               fall 3
               rise 2
           }
@@ -127,9 +127,9 @@
           }
 
           vrrp_script check_haproxy {
-              script "/bin/bash -c 'kill -0 $(cat /var/run/haproxy.pid)'"
+              script "/usr/bin/pgrep haproxy"
               interval 2
-              weight -2
+              weight 0
               fall 3
               rise 2
           }

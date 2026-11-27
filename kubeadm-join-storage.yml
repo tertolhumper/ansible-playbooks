@@ -1,0 +1,48 @@
+---
+- name: Join storage node to Kubernetes cluster
+  hosts: k8s_storage
+  become: yes
+  serial: 1
+
+  vars:
+    join_command_file: /tmp/kubeadm_join.sh
+
+  tasks:
+
+    - name: Check if already joined
+      stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: already_joined
+
+    - name: Read worker join command from Proxmox
+      slurp:
+        src: "{{ join_command_file }}"
+      register: join_command_raw
+      delegate_to: localhost
+      become: no
+      when: not already_joined.stat.exists
+
+    - name: Set join command fact
+      set_fact:
+        join_command: "{{ join_command_raw.content | b64decode | trim }}"
+      when: not already_joined.stat.exists
+
+    - name: Join cluster as storage node
+      shell: "{{ join_command }}"
+      register: join_output
+      when: not already_joined.stat.exists
+      timeout: 300
+
+    - name: Show join output
+      debug:
+        msg: "{{ join_output.stdout_lines }}"
+      when: not already_joined.stat.exists
+
+    - name: Verify node joined
+      shell: systemctl is-active kubelet
+      register: kubelet_status
+      changed_when: false
+
+    - name: Show kubelet status
+      debug:
+        msg: "kubelet is {{ kubelet_status.stdout }}"

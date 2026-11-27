@@ -4,11 +4,11 @@
   become: yes
 
   vars:
-    vip: "192.168.100.20"
+    vip: "10.0.10.20"
     control_plane_nodes:
-      - { name: rhel-node1, ip: "192.168.100.11" }
-      - { name: rhel-node2, ip: "192.168.100.12" }
-      - { name: rhel-node3, ip: "192.168.100.13" }
+      - { name: rhel-node1, ip: "10.0.10.11" }
+      - { name: rhel-node2, ip: "10.0.10.12" }
+      - { name: rhel-node3, ip: "10.0.10.13" }
     haproxy_port: 8443
 
   tasks:
@@ -73,7 +73,6 @@
           #---------------------------------------------------------------------
           backend k8s-api-backend
               mode tcp
-              option tcp-check
               balance roundrobin
               default-server inter 10s downinter 5s rise 2 fall 2 slowstart 60s maxconn 250 maxqueue 256 weight 100
           {% for node in control_plane_nodes %}

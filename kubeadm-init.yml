@@ -4,7 +4,7 @@
   become: yes
 
   vars:
-    vip: "192.168.100.20"
+    vip: "10.0.10.20"
     haproxy_port: 8443
     pod_network_cidr: "10.244.0.0/16"
     kubeadm_config: /etc/kubernetes/kubeadm-config.yaml
@@ -36,7 +36,7 @@
           apiVersion: kubeadm.k8s.io/v1beta4
           kind: InitConfiguration
           localAPIEndpoint:
-            advertiseAddress: "192.168.100.11"
+            advertiseAddress: "10.0.10.11"
             bindPort: 6443
       when: not kubeadm_initialized.stat.exists
 
