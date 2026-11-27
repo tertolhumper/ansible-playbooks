@@ -1,12 +1,10 @@
-<<<<<<< HEAD
 logs/
 *.log
 *.bak
 linux-amd64/
 notes/
-=======
 .vault_pass
 group_vars/all/vault.yml
 *.retry
 reports/
->>>>>>> f17d362861c456ff8e065f37faa4b3f4dc9a2062
+vault-keys.yml

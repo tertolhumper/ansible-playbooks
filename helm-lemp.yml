@@ -32,7 +32,6 @@
       environment:
         KUBECONFIG: "{{ kubeconfig }}"
 
-    # --- MariaDB ---
     - name: Check if MariaDB is already installed
       shell: helm status mariadb -n {{ lemp_namespace }} 2>/dev/null | grep -i status || echo "not installed"
       register: mariadb_status
@@ -59,7 +58,6 @@
         KUBECONFIG: "{{ kubeconfig }}"
       changed_when: false
 
-    # --- nginx + PHP ConfigMap ---
     - name: Deploy nginx config ConfigMap
       shell: |
         kubectl apply -f - <<'YAML'
@@ -91,7 +89,6 @@
         KUBECONFIG: "{{ kubeconfig }}"
       changed_when: false
 
-    # --- PHP App ConfigMap ---
     - name: Deploy PHP app ConfigMap
       shell: |
         kubectl apply -f - <<'YAML'
@@ -134,7 +131,6 @@
         KUBECONFIG: "{{ kubeconfig }}"
       changed_when: false
 
-    # --- PHP-FPM Deployment ---
     - name: Deploy PHP-FPM
       shell: |
         kubectl apply -f - <<'YAML'
@@ -183,7 +179,6 @@
         KUBECONFIG: "{{ kubeconfig }}"
       changed_when: false
 
-    # --- nginx Deployment ---
     - name: Deploy nginx
       shell: |
         kubectl apply -f - <<'YAML'
@@ -265,5 +260,5 @@
       debug:
         msg:
           - "Calm Apps PH is accessible at:"
-          - "http://192.168.100.14:30080"
-          - "http://192.168.100.15:30080"
+          - "http://10.0.10.14:30080"
+          - "http://10.0.10.15:30080"

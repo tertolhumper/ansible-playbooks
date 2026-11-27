@@ -70,7 +70,7 @@
 
     - name: Check LEMP NodePort
       uri:
-        url: "http://192.168.100.20:30080"
+        url: "http://10.0.10.20:30080"
         method: GET
         status_code: 200
         timeout: 10
@@ -80,7 +80,7 @@
 
     - name: Check Grafana NodePort
       uri:
-        url: "http://192.168.100.20:30030"
+        url: "http://10.0.10.20:30030"
         method: GET
         status_code: 200
         timeout: 10
