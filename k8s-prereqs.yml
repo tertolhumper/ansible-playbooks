@@ -26,7 +26,8 @@
         - 9090/tcp
         - 9965/tcp
         - 10249/tcp
-
+        - 10257/tcp
+        - 10259/tcp
     - name: Enable masquerade
       firewalld:
         masquerade: yes
