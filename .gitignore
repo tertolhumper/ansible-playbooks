@@ -8,3 +8,4 @@ group_vars/all/vault.yml
 *.retry
 reports/
 vault-keys.yml
+files/
